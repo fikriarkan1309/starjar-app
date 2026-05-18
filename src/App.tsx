@@ -10,7 +10,7 @@ import {
   sendPasswordResetEmail 
 } from 'firebase/auth';
 
-// --- CONFIG FIREBASE STARJAR ---
+// --- CONFIG FIREBASE STARJAR (KUNCI SERVER ASIA) ---
 const firebaseConfig = {
   apiKey: "AIzaSyCyK1iq0pRBcRCUOElmHxhfOOyRek_Graw",
   authDomain: "starjar-f3461.firebaseapp.com",
@@ -18,14 +18,14 @@ const firebaseConfig = {
   storageBucket: "starjar-f3461.firebasestorage.app",
   messagingSenderId: "834288744757",
   appId: "1:834288744757:web:8babfcb387284efc54347c",
-  databaseURL: "https://starjar-f3461-default-rtdb.firebaseio.com"
+  databaseURL: "https://starjar-f3461-default-rtdb.asia-southeast1.firebasedatabase.app/"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-// --- DEFINISI INTERFACE ---
+// --- DEFINISI INTERFACE TYPESCRIPT ---
 interface Profile {
   id: string;
   name: string;
@@ -47,6 +47,15 @@ interface Task {
   assignedTo: string;
 }
 
+interface Reward {
+  id: string;
+  title: string;
+  cost: number;
+  isClaimed: boolean;
+  isApproved: boolean;
+  assignedTo: string;
+}
+
 const getWeekNumber = (d: Date): string => {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
@@ -56,90 +65,155 @@ const getWeekNumber = (d: Date): string => {
 };
 
 export default function App() {
-  // --- AUTH & PREMIUM STATE ---
+  // --- STATE AUTHENTICATION, EYE TOGGLE, & PREMIUM ---
   const [user, setUser] = useState<any>(null);
   const [isPremium, setIsPremium] = useState<boolean>(false);
-  const [loadingAuth, setLoadingAuth] = useState(true);
-  const [loadingPremium, setLoadingPremium] = useState(false);
+  const [loadingPremium, setLoadingPremium] = useState<boolean>(true);
+  
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false); // Opsi mata password
   const [isRegistering, setIsRegistering] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
-  // --- CORE APP STATE ---
+  // --- STATE CORE APP SYSTEM ---
   const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
+  const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
   const [parentTab, setParentTab] = useState<'stats' | 'approval' | 'manage'>('manage'); 
   const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
 
-  // --- FORM STATE ---
   const [showChildForm, setShowChildForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
-  const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: '' });
+  const [showRewardForm, setShowRewardForm] = useState(false);
 
-  // --- MONITOR LOGIN ---
+  const [childRoutineOpen, setChildRoutineOpen] = useState<{ [key: string]: boolean }>({});
+  const [childAchieveOpen, setChildAchieveOpen] = useState<{ [key: string]: boolean }>({});
+
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+
+  // --- MONITOR STATUS LOGIN USER ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoadingAuth(false);
+      if (!currentUser) {
+        setLoadingPremium(false);
+      }
     });
     return () => unsubscribe();
   }, []);
 
-  // --- MONITOR DATABASE (PREMIUM & DATA) ---
+  // --- MENDENGARKAN DATABASE REALTIME BERDASARKAN USER UID ---
   useEffect(() => {
     if (!user) {
       setProfiles([]);
       setTasks([]);
+      setRewards([]);
       setIsPremium(false);
-      setLoadingPremium(false);
       return;
     }
 
-    setLoadingPremium(true);
     const userBasePath = `users/${user.uid}`;
+    setLoadingPremium(true);
 
-    // Listen Premium Status
+    // 🔑 Ambil Status Lisensi Premium
     const unsubPremium = onValue(ref(db, `${userBasePath}/isPremium`), (snapshot) => {
-      setIsPremium(!!snapshot.val());
+      const val = snapshot.val();
+      setIsPremium(!!val);
       setLoadingPremium(false);
     });
 
-    // Listen Profiles
+    // 👶 Ambil Profil Anak
     const unsubProfiles = onValue(ref(db, `${userBasePath}/profiles`), (snapshot) => {
       const data = snapshot.val();
       if (!data) { setProfiles([]); return; }
-      setProfiles(Object.keys(data).map(key => ({ id: key, ...data[key] })));
+      const pData = Object.keys(data).map(key => ({
+        id: key,
+        name: data[key].name || '',
+        role: data[key].role || '',
+        stars: typeof data[key].stars === 'number' ? data[key].stars : 0,
+        maxStars: typeof data[key].maxStars === 'number' ? data[key].maxStars : 50,
+        avatar: data[key].avatar || '👶',
+        theme: data[key].theme || 'from-pink-500 to-rose-400'
+      } as Profile));
+      setProfiles(pData);
     });
 
-    // Listen Tasks
+    // 🎁 Ambil Katalog Hadiah
+    const unsubRewards = onValue(ref(db, `${userBasePath}/rewards`), (snapshot) => {
+      const data = snapshot.val();
+      if (!data) { setRewards([]); return; }
+      const rData = Object.keys(data).map(key => ({
+        id: key,
+        title: data[key].title || '',
+        cost: typeof data[key].cost === 'number' ? data[key].cost : 10,
+        isClaimed: !!data[key].isClaimed,
+        isApproved: !!data[key].isApproved,
+        assignedTo: data[key].assignedTo || ''
+      } as Reward));
+      setRewards(rData);
+    });
+
+    // 🎯 Ambil Daftar Misi & Automasi Reset Waktu
     const unsubTasks = onValue(ref(db, `${userBasePath}/tasks`), (snapshot) => {
       const data = snapshot.val();
       if (!data) { setTasks([]); return; }
-      const tData = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+      const tData = Object.keys(data).map(key => ({
+        id: key,
+        title: data[key].title || '',
+        type: data[key].type || 'Daily',
+        recurrence: data[key].recurrence || 'none',
+        reward: typeof data[key].reward === 'number' ? data[key].reward : 2,
+        isDone: !!data[key].isDone,
+        isApproved: !!data[key].isApproved,
+        assignedTo: data[key].assignedTo || ''
+      } as Task));
+      
       setTasks(tData);
 
-      // Reset Logics
-      const today = new Date().toDateString();
-      const currentWeek = getWeekNumber(new Date());
-      if (localStorage.getItem(`resetDaily_${user.uid}`) !== today) {
+      const today = new Date();
+      const todayStr = today.toDateString();
+      const currentWeek = getWeekNumber(today);
+
+      if (localStorage.getItem(`lastDailyReset_${user.uid}`) !== todayStr) {
         tData.forEach(t => {
           if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) {
             update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
           }
         });
-        localStorage.setItem(`resetDaily_${user.uid}`, today);
+        localStorage.setItem(`lastDailyReset_${user.uid}`, todayStr);
+      }
+
+      if (localStorage.getItem(`lastWeeklyReset_${user.uid}`) !== currentWeek) {
+        tData.forEach(t => {
+          if (t.type === 'Daily' && t.recurrence === 'weekly' && (t.isDone || t.isApproved)) {
+            update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
+          }
+        });
+        localStorage.setItem(`lastWeeklyReset_${user.uid}`, currentWeek);
       }
     });
 
-    return () => { unsubPremium(); unsubProfiles(); unsubTasks(); };
+    return () => { unsubPremium(); unsubProfiles(); unsubTasks(); unsubRewards(); };
   }, [user]);
 
-  // --- HANDLERS ---
+  // --- AUDIO SFE & AUDIO CELEBRATION ---
+  const triggerCelebration = (type: 'task' | 'reward') => {
+    try {
+      const url = type === 'reward' 
+        ? 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3' 
+        : 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'; 
+      new Audio(url).play();
+    } catch (e) {}
+    setCelebration(type);
+    setTimeout(() => setCelebration(null), 2500);
+  };
+
+  // --- HANDLER SISTEM AUTENTIKASI ---
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -151,108 +225,169 @@ export default function App() {
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
       }
+      setAuthEmail('');
+      setAuthPassword('');
     } catch (err: any) {
-      setAuthError(err.message.includes('invalid-credential') ? 'Email atau Password salah.' : err.message);
+      if (err.code === 'auth/weak-password') setAuthError('Password minimal 6 karakter, Bro.');
+      else if (err.code === 'auth/email-already-in-use') setAuthError('Email ini sudah kedaftar.');
+      else if (err.code === 'auth/invalid-credential') setAuthError('Email atau Password salah.');
+      else setAuthError(err.message);
     }
   };
 
+  // 📧 OPSI MANDIRI LUPA PASSWORD VIA EMAIL
   const handleForgotPassword = async () => {
-    if (!authEmail) return setAuthError('Masukkan email kamu dulu di kotak email.');
+    if (!authEmail) {
+      setAuthError('Ketik dulu alamat email kamu di kolom atas, baru klik tombol ini, Bro!');
+      return;
+    }
     setAuthError('');
+    setAuthSuccess('');
     try {
       await sendPasswordResetEmail(auth, authEmail);
-      setAuthSuccess('Link reset password sudah dikirim ke email kamu! Cek inbox/spam ya.');
+      setAuthSuccess('Sip! Tautan ganti password sudah dikirim ke email kamu. Cek kotak masuk/spam ya!');
     } catch (err: any) {
       setAuthError('Gagal mengirim email reset: ' + err.message);
     }
   };
 
-  const handleLogout = () => window.confirm('Keluar aplikasi?') && signOut(auth);
+  const handleLogout = () => window.confirm('Yakin mau keluar dari StarJar?') && signOut(auth);
 
-  const handleAddTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !taskForm.assignedTo) return alert('Pilih anak dulu!');
-    push(ref(db, `users/${user.uid}/tasks`), { ...taskForm, isDone: false, isApproved: false });
-    setTaskForm({ ...taskForm, title: '' });
-    setShowTaskForm(false);
+  // --- CRUD DATA HANDLERS ---
+  const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
+  const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: '' });
+  const [rewardForm, setRewardForm] = useState({ title: '', cost: 10, assignedTo: '' });
+
+  const handleCompleteTask = (taskId: string) => {
+    if (!user) return;
+    triggerCelebration('task');
+    update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: true });
+  };
+
+  const handleClaimReward = (rewardId: string, childId: string, cost: number) => {
+    if (!user) return;
+    const child = profiles.find(p => p.id === childId);
+    if (!child || child.stars < cost) return alert("Bintangmu belum cukup! 💪🌟");
+    triggerCelebration('reward');
+    update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: child.stars - cost });
+    update(ref(db, `users/${user.uid}/rewards/${rewardId}`), { isClaimed: true });
   };
 
   const handleAddProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    push(ref(db, `users/${user.uid}/profiles`), { ...profileForm, stars: 0 });
+    if (!profileForm.name || !user) return;
+    push(ref(db, `users/${user.uid}/profiles`), { 
+      name: profileForm.name, role: profileForm.role || 'Anak', 
+      stars: 0, maxStars: Number(profileForm.maxStars), 
+      avatar: profileForm.avatar, theme: profileForm.theme 
+    });
     setProfileForm({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
     setShowChildForm(false);
   };
 
-  const handleCompleteTask = (taskId: string) => {
-    if (!user) return;
-    setCelebration('task');
-    update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: true });
-    setTimeout(() => setCelebration(null), 2000);
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskForm.title || !taskForm.assignedTo || !user) return alert('Pilih nama anak dulu!');
+    const baseTask = { title: taskForm.title, type: taskForm.type, recurrence: taskForm.type === 'Daily' ? taskForm.recurrence : 'none', reward: Number(taskForm.reward), isDone: false, isApproved: false, assignedTo: taskForm.assignedTo };
+    push(ref(db, `users/${user.uid}/tasks`), baseTask);
+    setTaskForm({ ...taskForm, title: '' }); 
+    setShowTaskForm(false);
   };
 
-  const handleApprove = (taskId: string, profileId: string, reward: number) => {
-    if (!user) return;
-    const p = profiles.find(x => x.id === profileId);
-    if (!p) return;
+  const handleAddReward = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rewardForm.title || !rewardForm.assignedTo || !user) return alert('Pilih nama anak dulu!');
+    const baseReward = { title: rewardForm.title, cost: Number(rewardForm.cost), isClaimed: false, isApproved: false, assignedTo: rewardForm.assignedTo };
+    push(ref(db, `users/${user.uid}/rewards`), baseReward);
+    setRewardForm({ ...rewardForm, title: '' });
+    setShowRewardForm(false);
+  };
+
+  const handleApproveTask = (taskId: string, childId: string | undefined, reward: number) => {
+    if (!childId || !user) return;
+    const child = profiles.find(p => p.id === childId);
+    if (!child) return;
     update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isApproved: true });
-    update(ref(db, `users/${user.uid}/profiles/${profileId}`), { stars: Math.min(p.stars + reward, p.maxStars) });
+    update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: Math.min(child.stars + reward, child.maxStars) });
   };
 
-  // --- UI RENDERERS ---
+  const handleApproveReward = (rewardId: string) => {
+    if (!user) return;
+    update(ref(db, `users/${user.uid}/rewards/${rewardId}`), { isApproved: true });
+  };
+
+  const handleDeleteProfile = (id: string) => {
+    if (!user) return;
+    if (window.confirm('Hapus akun anak ini beserta seluruh datanya?')) {
+      remove(ref(db, `users/${user.uid}/profiles/${id}`));
+    }
+  };
+
+  const handleDeleteTask = (id: string) => { if (user) remove(ref(db, `users/${user.uid}/tasks/${id}`)); };
+  const handleDeleteReward = (id: string) => { if (user) remove(ref(db, `users/${user.uid}/rewards/${id}`)); };
+
+  const getTaskLabel = (item: any) => {
+    if (!item) return '🔄 Harian';
+    if (item.type === 'Achievement') return '🏆 Pencapaian';
+    if (item.recurrence === 'weekly') return '🔄 Mingguan';
+    return '🔄 Harian';
+  };
+
+  // =========================================================================
+  // VIEW RENDERERS UTAMA (800+ BARIS)
+  // =========================================================================
   if (loadingAuth || loadingPremium) {
     return (
-      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-5xl animate-spin">🌟</div>
-          <p className="text-slate-400 font-bold tracking-widest animate-pulse">MEMUAT STARJAR...</p>
-        </div>
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
+         <div className="text-center space-y-3">
+           <div className="text-6xl animate-spin">🌟</div>
+           <p className="animate-pulse">MEMUAT STARJAR...</p>
+         </div>
       </div>
     );
   }
 
-  // 1. LOGIN VIEW
+  // 🔒 1. HALAMAN LOGIN UTAMA (🌟 STARJAR BERSIH DENGAN FITUR MATA & RESET PASSWORD)
   if (!user) {
     return (
       <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6 font-sans">
-        <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-8">
-          <div className="text-center space-y-3">
-            <span className="text-7xl block animate-bounce">🌟</span>
-            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-orange-500 tracking-tighter">StarJar</h1>
-            <p className="text-slate-400 text-sm font-medium">Digital Reward System for Smart Kids</p>
+        <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-6">
+          <div className="text-center space-y-2">
+            <span className="text-6xl block transform hover:scale-110 transition-transform">🌟</span>
+            <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-400 tracking-tight">StarJar</h1>
+            <p className="text-slate-400 text-sm">Aplikasi Toples Disiplin Anak Digital</p>
           </div>
 
-          <form onSubmit={handleAuthSubmit} className="space-y-5">
-            <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-black ml-4">Email Address</label>
-              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 transition-all" placeholder="bundapintar@email.com" />
+          <form onSubmit={handleAuthSubmit} className="space-y-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 block ml-2">Email Orang Tua</label>
+              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-400" placeholder="nama@email.com" />
             </div>
             
-            <div className="space-y-1 relative">
-              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-black ml-4">Password</label>
+            {/* INPUT PASSWORD DENGAN TOMBOL MATA UNTUK INTIP */}
+            <div className="relative">
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 block ml-2">Password Akun</label>
               <div className="relative">
-                <input type={showPassword ? "text" : "password"} required value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 transition-all" placeholder="••••••••" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-yellow-400 transition-colors">
-                  {showPassword ? '👁️' : '🙈'}
+                <input type={showPassword ? "text" : "password"} required value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-400 pr-12" placeholder="••••••••" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors text-sm">
+                  {showPassword ? '🙈' : '👁️'}
                 </button>
               </div>
             </div>
 
-            {authError && <p className="text-red-400 text-xs font-bold text-center bg-red-500/10 p-3 rounded-xl border border-red-500/20">{authError}</p>}
-            {authSuccess && <p className="text-green-400 text-xs font-bold text-center bg-green-500/10 p-3 rounded-xl border border-green-500/20">{authSuccess}</p>}
+            {authError && <p className="text-red-400 text-xs font-bold text-center bg-red-500/10 p-2.5 rounded-xl border border-red-500/20">{authError}</p>}
+            {authSuccess && <p className="text-green-400 text-xs font-bold text-center bg-green-500/10 p-2.5 rounded-xl border border-green-500/20">{authSuccess}</p>}
 
-            <button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-yellow-500/20 transform active:scale-95 transition-all">
-              {isRegistering ? '🔥 DAFTAR SEKARANG' : '🚀 MASUK APLIKASI'}
+            <button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 font-black py-3.5 rounded-xl text-sm shadow-lg shadow-yellow-500/10 transform active:scale-95 transition-all">
+              {isRegistering ? '🔥 Daftar Akun Baru' : '🔑 Masuk Aplikasi'}
             </button>
           </form>
 
-          <div className="space-y-3 pt-4 border-t border-slate-700/50 text-center">
-            <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-xs font-bold text-slate-400 hover:text-white transition-colors">
-              {isRegistering ? 'Sudah punya akun? Login di sini' : 'Belum punya akun? Buat Baru'}
+          <div className="text-center border-t border-slate-700/60 pt-4 space-y-2">
+            <button type="button" onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); setAuthSuccess(''); }} className="text-xs font-bold text-cyan-400 hover:underline block mx-auto">
+              {isRegistering ? 'Sudah punya akun? Masuk di sini' : 'Belum punya akun? Ketuk untuk Daftar Baru'}
             </button>
-            <br />
-            <button type="button" onClick={handleForgotPassword} className="text-[10px] font-black text-yellow-500/70 hover:text-yellow-400 tracking-wider uppercase">
+            <button type="button" onClick={handleForgotPassword} className="text-[10px] font-black text-yellow-500/70 hover:text-yellow-400 tracking-wider uppercase block mx-auto pt-1">
               Lupa Password? Reset via Email
             </button>
           </div>
@@ -261,97 +396,159 @@ export default function App() {
     );
   }
 
-  // 2. PAYWALL VIEW
+  // ⏳ 2. HALAMAN LAYAR TUNGGU LYNK.ID (PREMIUM = FALSE)
   if (!isPremium) {
     return (
       <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-slate-800/80 rounded-[3rem] border border-yellow-500/20 p-10 text-center space-y-8">
-          <div className="relative">
-            <span className="text-8xl block animate-pulse">⏳</span>
-            <div className="absolute -top-2 -right-2 bg-red-500 text-[10px] font-black px-2 py-1 rounded-full">PENDING</div>
+        <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-md rounded-[2.5rem] border-2 border-yellow-500/20 p-8 text-center space-y-6">
+          <span className="text-7xl block animate-pulse">⏳</span>
+          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-400">Akun Sedang Diproses!</h1>
+          <p className="text-slate-400 text-sm">
+            Sip, akun <span className="text-white font-bold">{user.email}</span> berhasil didaftarkan!
+          </p>
+          <p className="text-slate-400 text-xs bg-slate-900/60 p-4 rounded-xl border border-slate-700 leading-relaxed">
+            Sistem kami sedang mencocokkan data pendaftaran Anda dengan data invoice pembelian dari Lynk.id. Mohon tunggu 5-10 menit ya, halaman ini akan terbuka otomatis secara realtime begitu aktivasi selesai.
+          </p>
+          <div className="pt-2">
+            <div className="text-[11px] text-slate-500 animate-pulse font-medium">🛡️ Sinkronisasi aman dengan database Lynk.id...</div>
+            <button type="button" onClick={handleLogout} className="text-xs text-slate-500 hover:text-red-400 transition-colors underline block mx-auto mt-6">🚪 Keluar / Ganti Akun</button>
           </div>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-black text-white">Sedang Diproses</h1>
-            <p className="text-slate-400 text-sm leading-relaxed">
-              Halo <span className="text-yellow-400 font-bold">{user.email}</span>, pembayaranmu sedang divalidasi oleh sistem. Mohon tunggu 5-10 menit ya.
-            </p>
-          </div>
-          <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 text-left space-y-3">
-             <p className="text-xs text-slate-300 flex items-center gap-2">✅ Akun berhasil didaftarkan</p>
-             <p className="text-xs text-slate-500 flex items-center gap-2">⏳ Sinkronisasi database Lynk.id...</p>
-          </div>
-          <button onClick={handleLogout} className="text-xs font-bold text-slate-500 underline uppercase tracking-widest">Logout Akun</button>
         </div>
       </div>
     );
   }
 
-  // 3. MAIN APP VIEW
+  // 3. MAIN APPLICATION INTERFACE
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 pb-32">
+    <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 font-sans pb-32">
       {celebration && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-md">
-          <div className="text-center animate-tada">
-            <div className="text-9xl mb-4">⭐</div>
-            <h2 className="text-4xl font-black text-yellow-400">MISI SELESAI!</h2>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm pointer-events-none">
+          <div className="text-9xl animate-bounce">
+            {celebration === 'reward' ? '🎉🎁🎉' : '⭐✨'}
           </div>
         </div>
       )}
 
       {currentRole === 'child' ? (
-        // --- VIEW ANAK ---
-        <div className="max-w-6xl mx-auto space-y-12 animate-fade-in">
-          <header className="text-center">
-            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-500">Misi Bintang 🚀</h1>
+        // ==========================================
+        // 👦 RENDER VIEW ANAK (DENGAN REWARDS KATALOG)
+        // ==========================================
+        <div className="space-y-12 max-w-6xl mx-auto">
+          <header className="text-center space-y-2">
+            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-cyan-400 tracking-tight">
+              Misi Bintang Hari Ini! 🚀
+            </h1>
+            <p className="text-slate-400 font-medium">Yuk kumpulkan bintang untuk ditukar hadiah impian!</p>
           </header>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {profiles.map(p => (
-              <div key={p.id} className="bg-slate-800/40 border-2 border-slate-700/50 rounded-[3rem] p-8 space-y-8 shadow-xl">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-5">
-                    <div className={`text-6xl bg-gradient-to-br ${p.theme} p-5 rounded-[2rem] shadow-lg`}>{p.avatar}</div>
-                    <div><h2 className="text-3xl font-black text-white">{p.name}</h2><p className="text-slate-500 font-bold uppercase text-xs tracking-widest">{p.role}</p></div>
-                  </div>
-                  <div className="text-right"><p className="text-4xl font-black text-yellow-400">{p.stars}</p><p className="text-[10px] text-slate-500 font-black">/ {p.maxStars} ⭐</p></div>
-                </div>
-                <div className="space-y-3">
-                  {tasks.filter(t => t.assignedTo === p.id && !t.isApproved).map(t => (
-                    <div key={t.id} className="flex justify-between items-center bg-slate-900/80 p-5 rounded-2xl border border-slate-700/50">
-                      <span className="font-bold text-slate-100">{t.title}</span>
-                      <button onClick={() => handleCompleteTask(t.id)} disabled={t.isDone} className={`px-5 py-2 rounded-xl font-black text-xs transition-all ${t.isDone ? 'bg-slate-800 text-slate-600' : 'bg-yellow-400 text-slate-900 shadow-lg active:scale-90'}`}>
-                        {t.isDone ? '⏳ REVIEW' : `+${t.reward} ⭐`}
-                      </button>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+            {profiles.map(profile => {
+              const fillPercentage = Math.min((profile.stars / profile.maxStars) * 100, 100);
+              const childRoutines = tasks.filter(t => String(t.assignedTo) === String(profile.id) && t.type === 'Daily' && !t.isApproved);
+              const childAchievements = tasks.filter(t => String(t.assignedTo) === String(profile.id) && t.type === 'Achievement' && !t.isApproved);
+              const isRoutineOpen = !!childRoutineOpen[profile.id];
+              const isAchieveOpen = !!childAchieveOpen[profile.id];
+
+              return (
+                <div key={profile.id} className="bg-slate-800/60 backdrop-blur-sm rounded-[2.5rem] border-2 border-slate-700/50 p-8 shadow-2xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex flex-row items-center justify-between gap-4 mb-8">
+                      <div className="flex items-center gap-5">
+                        <div className={`text-5xl bg-gradient-to-br ${profile.theme} p-4 rounded-[2rem] transform -rotate-3`}>{profile.avatar}</div>
+                        <div>
+                          <h2 className="text-3xl font-black text-white">{profile.name}</h2>
+                          <p className="text-slate-400 font-medium text-sm mt-0.5">{profile.role}</p>
+                        </div>
+                      </div>
+                      <div className="relative w-20 h-28 rounded-[1.5rem] border-4 border-slate-600/60 bg-slate-900/50 overflow-hidden flex flex-col justify-end">
+                        <div className="w-full bg-gradient-to-t from-amber-500 to-yellow-300 transition-all duration-1000" style={{ height: `${fillPercentage}%` }}></div>
+                        <div className="absolute inset-0 flex items-center justify-center flex-col z-30 font-black text-white text-2xl">
+                           {profile.stars}<span className="text-[10px] font-bold text-slate-400">/ {profile.maxStars}</span>
+                        </div>
+                      </div>
                     </div>
-                  ))}
+
+                    <div className="space-y-3">
+                      {/* Accordion Rutinitas */}
+                      <div className="bg-slate-900/40 border border-slate-700 rounded-2xl overflow-hidden">
+                        <button type="button" onClick={() => setChildRoutineOpen(p => ({...p, [profile.id]: !isRoutineOpen}))} className="w-full px-4 py-3 flex justify-between items-center text-sm font-bold text-slate-200">
+                          <span>🔄 Rutinitas Harian ({childRoutines.length})</span>
+                          <span>{isRoutineOpen ? '▲' : '▼'}</span>
+                        </button>
+                        {isRoutineOpen && (
+                          <div className="p-3 border-t border-slate-700/40 space-y-2 bg-slate-900/20">
+                            {childRoutines.map(item => (
+                              <div key={item.id} className="flex justify-between items-center p-3 rounded-xl border border-slate-700/60 bg-slate-900/60 text-xs">
+                                <div><p className="font-bold text-slate-100">{item.title}</p></div>
+                                <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-3 py-1.5 rounded-lg font-black ${item.isDone ? 'bg-slate-700 text-slate-500' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-900'}`}>{item.isDone ? '⏳' : `+${item.reward} ⭐`}</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Accordion Pencapaian */}
+                      <div className="bg-slate-900/40 border border-slate-700 rounded-2xl overflow-hidden">
+                        <button type="button" onClick={() => setChildAchieveOpen(p => ({...p, [profile.id]: !isAchieveOpen}))} className="w-full px-4 py-3 flex justify-between items-center text-sm font-bold text-slate-200">
+                          <span>🏆 Misi Pencapaian ({childAchievements.length})</span>
+                          <span>{isAchieveOpen ? '▲' : '▼'}</span>
+                        </button>
+                        {isAchieveOpen && (
+                          <div className="p-3 border-t border-slate-700/40 space-y-2 bg-slate-900/20">
+                            {childAchievements.map(item => (
+                              <div key={item.id} className="flex justify-between items-center p-3 rounded-xl border border-slate-700/60 bg-slate-900/60 text-xs">
+                                <div><p className="font-bold text-slate-100">{item.title}</p></div>
+                                <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-3 py-1.5 rounded-lg font-black ${item.isDone ? 'bg-slate-700 text-slate-500' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-900'}`}>{item.isDone ? '⏳' : `+${item.reward} ⭐`}</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 🎁 KATALOG HADIAH ANAK */}
+                  <div className="mt-6 border-t border-slate-700/60 pt-4">
+                    <button onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="w-full py-2.5 rounded-xl font-black text-xs bg-slate-700 text-white">🎁 Katalog Tukar Hadiah</button>
+                    {activeCatalogId === profile.id && (
+                      <div className="mt-3 bg-slate-900/60 border border-slate-700 rounded-2xl p-3 space-y-2">
+                        {rewards.filter(r => String(r.assignedTo) === String(profile.id) && !r.isApproved).map(reward => (
+                          <div key={reward.id} className="flex justify-between items-center p-2.5 rounded-xl bg-slate-800 text-xs">
+                            <div><p className="font-bold text-slate-200">{reward.title}</p><p className="text-yellow-400 font-bold">💰 Harga: {reward.cost} ⭐</p></div>
+                            <button onClick={() => handleClaimReward(reward.id, profile.id, reward.cost)} disabled={reward.isClaimed} className={`px-3 py-1 rounded-lg font-bold ${reward.isClaimed ? 'bg-slate-700 text-slate-500' : 'bg-orange-500 text-white'}`}>{reward.isClaimed ? '⏳' : 'Tukar'}</button>
+                          </div>
+                        ))}
+                        {rewards.filter(r => String(r.assignedTo) === String(profile.id) && !r.isApproved).length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic">Belum ada daftar hadiah khusus untukmu.</p>}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : (
-        // --- VIEW PARENT ---
-        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-          <header className="flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-700/50 pb-8">
-            <div><h1 className="text-3xl font-black text-white">Panel Orang Tua 👋</h1><p className="text-slate-500 text-xs mt-1 font-medium">{user.email}</p></div>
-            <div className="flex bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700">
-              <button onClick={() => setParentTab('stats')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${parentTab === 'stats' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}>📊 STATS</button>
-              <button onClick={() => setParentTab('approval')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${parentTab === 'approval' ? 'bg-green-500 text-white shadow-lg' : 'text-slate-400'}`}>🔔 REVIEW</button>
-              <button onClick={() => setParentTab('manage')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${parentTab === 'manage' ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-400'}`}>⚙️ KELOLA</button>
-              <button onClick={handleLogout} className="px-5 py-2 text-xs font-black text-red-400 ml-2">🚪 OUT</button>
+        // ==========================================
+        // 👨 RENDER VIEW ORANG TUA (LENGKAP SEMUA TAB)
+        // ==========================================
+        <div className="max-w-4xl mx-auto space-y-6">
+          <header className="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-4 gap-4">
+            <div><h1 className="text-2xl font-black text-white">Panel Kontrol Utama 👋</h1><p className="text-slate-500 text-xs font-medium">{user.email}</p></div>
+            <div className="flex gap-2 bg-slate-800 p-1.5 rounded-xl border border-slate-700">
+              <button onClick={() => setParentTab('stats')} className={`px-4 py-1.5 rounded-lg text-xs font-black ${parentTab === 'stats' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>📊 Stats</button>
+              <button onClick={() => setParentTab('approval')} className={`px-4 py-1.5 rounded-lg text-xs font-black ${parentTab === 'approval' ? 'bg-green-600 text-white' : 'text-slate-400'}`}>🔔 Review ({tasks.filter(t => t.isDone && !t.isApproved).length + rewards.filter(r => r.isClaimed && !r.isApproved).length})</button>
+              <button onClick={() => setParentTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-black ${parentTab === 'manage' ? 'bg-blue-500 text-white' : 'text-slate-400'}`}>⚙️ Kelola</button>
+              <button onClick={handleLogout} className="px-4 py-1.5 rounded-lg text-xs font-black text-red-400">🚪 Keluar</button>
             </div>
           </header>
 
           {parentTab === 'stats' && (
-            <div className="space-y-6">
+            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
+              <h2 className="text-sm font-black text-white">🏺 Progres Akumulasi Bintang</h2>
               {profiles.map(p => (
-                <div key={p.id} className="bg-slate-800/50 p-6 rounded-[2rem] border border-slate-700/50 space-y-4">
-                  <div className="flex justify-between text-sm font-black">
-                    <span className="text-white">{p.avatar} {p.name}</span>
-                    <span className="text-yellow-400">{p.stars} / {p.maxStars} ⭐</span>
-                  </div>
-                  <div className="w-full bg-slate-900 rounded-full h-4 overflow-hidden border border-slate-700">
-                    <div className={`h-full bg-gradient-to-r ${p.theme} transition-all duration-1000`} style={{ width: `${(p.stars/p.maxStars)*100}%` }}></div>
-                  </div>
+                <div key={p.id} className="text-xs font-bold text-white space-y-1">
+                   <div className="flex justify-between"><span>{p.avatar} {p.name}</span><span className="text-yellow-400">{p.stars}/{p.maxStars} ⭐</span></div>
+                   <div className="w-full bg-slate-900 rounded-full h-2.5 border border-slate-700 overflow-hidden"><div className={`h-full bg-gradient-to-r ${p.theme}`} style={{ width: `${(p.stars/p.maxStars)*100}%` }}></div></div>
                 </div>
               ))}
             </div>
@@ -359,66 +556,91 @@ export default function App() {
 
           {parentTab === 'approval' && (
             <div className="space-y-4">
-              {tasks.filter(t => t.isDone && !t.isApproved).map(t => {
-                const child = profiles.find(p => p.id === t.assignedTo);
-                return (
-                  <div key={t.id} className="flex justify-between items-center bg-slate-800/50 p-6 rounded-3xl border border-slate-700">
-                    <div><p className="text-[10px] font-black text-slate-500 uppercase">{child?.name} SELESAIKAN:</p><p className="text-lg font-bold text-white">{t.title}</p></div>
-                    <button onClick={() => handleApprove(t.id, t.assignedTo, t.reward)} className="bg-green-500 text-white font-black px-6 py-2 rounded-2xl shadow-lg active:scale-95 transition-all text-xs">SETUJUI +{t.reward}⭐</button>
-                  </div>
-                );
-              })}
-              {tasks.filter(t => t.isDone && !t.isApproved).length === 0 && <div className="text-center p-12 text-slate-500 font-bold uppercase tracking-widest text-xs border-2 border-dashed border-slate-800 rounded-[3rem]">Belum ada misi yang perlu direview</div>}
+              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-2">
+                <h3 className="text-xs font-black text-slate-300">🎯 Persetujuan Misi Selesai</h3>
+                {tasks.filter(t => t.isDone && !t.isApproved).map(t => {
+                  const c = profiles.find(p => p.id === t.assignedTo);
+                  return (
+                    <div key={t.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-xl border border-slate-700 text-xs">
+                      <div><p className="text-white font-bold">{t.title}</p><p className="text-slate-500">Oleh: {c?.name} ({getTaskLabel(t)})</p></div>
+                      <button onClick={() => handleApproveTask(t.id, c?.id, t.reward)} className="bg-green-500 text-slate-900 font-black px-4 py-1.5 rounded-lg">Setujui (+{t.reward}⭐)</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-2">
+                <h3 className="text-xs font-black text-slate-300">🎁 Persetujuan Klaim Hadiah</h3>
+                {rewards.filter(r => r.isClaimed && !r.isApproved).map(r => {
+                  const c = profiles.find(p => p.id === r.assignedTo);
+                  return (
+                    <div key={r.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-xl border border-slate-700 text-xs">
+                      <div><p className="text-white font-bold">{r.title}</p><p className="text-orange-400">Untuk: {c?.name}</p></div>
+                      <button onClick={() => handleApproveReward(r.id)} className="bg-orange-500 text-white font-black px-4 py-1.5 rounded-lg">Berikan Hadiah ✓</button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
           {parentTab === 'manage' && (
-            <div className="space-y-6">
-              {/* Form Tambah Anak */}
-              <div className="bg-slate-800/50 rounded-[2rem] border border-slate-700 overflow-hidden">
-                <button onClick={() => setShowChildForm(!showChildForm)} className="w-full p-6 flex justify-between items-center text-sm font-black text-white"><span>👶 TAMBAH AKUN ANAK</span><span>{showChildForm ? '▲' : '▼'}</span></button>
+            <div className="space-y-4">
+              <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <button type="button" onClick={() => setShowChildForm(!showChildForm)} className="w-full px-4 py-3 flex justify-between text-xs font-black text-white bg-slate-800/50"><span>👶 TAMBAH PROFIL ANAK</span><span>{showChildForm?'▲':'▼'}</span></button>
                 {showChildForm && (
-                  <form onSubmit={handleAddProfile} className="p-8 border-t border-slate-700 space-y-4 bg-slate-900/20">
-                    <input type="text" placeholder="Nama Panggilan" required value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-3 text-sm text-white" />
-                    <button type="submit" className="w-full bg-blue-500 text-white font-black py-3 rounded-2xl text-xs">SIMPAN AKUN</button>
+                  <form onSubmit={handleAddProfile} className="p-4 border-t border-slate-700 bg-slate-900/10 space-y-3 text-xs">
+                    <input type="text" placeholder="Nama Lengkap/Panggilan" required value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+                    <input type="text" placeholder="Status (Contoh: Kakak / Adik)" value={profileForm.role} onChange={e => setProfileForm({...profileForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+                    <button type="submit" className="w-full bg-blue-500 text-white font-black py-2 rounded-lg">Simpan Akun Anak</button>
                   </form>
                 )}
               </div>
 
-              {/* Form Tambah Misi */}
-              <div className="bg-slate-800/50 rounded-[2rem] border border-slate-700 overflow-hidden">
-                <button onClick={() => setShowTaskForm(!showTaskForm)} className="w-full p-6 flex justify-between items-center text-sm font-black text-white"><span>🎯 TAMBAH MISI BARU</span><span>{showTaskForm ? '▲' : '▼'}</span></button>
+              <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <button type="button" onClick={() => setShowTaskForm(!showTaskForm)} className="w-full px-4 py-3 flex justify-between text-xs font-black text-white bg-slate-800/50"><span>🎯 BUAT MISI BARU</span><span>{showTaskForm?'▲':'▼'}</span></button>
                 {showTaskForm && (
-                  <form onSubmit={handleAddTask} className="p-8 border-t border-slate-700 space-y-4 bg-slate-900/20">
-                    <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-3 text-sm text-white">
-                      <option value="">Pilih Anak...</option>
-                      {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    <input type="text" placeholder="Nama Misi (Contoh: Sikat Gigi)" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-3 text-sm text-white" />
-                    <button type="submit" className="w-full bg-slate-700 text-white font-black py-3 rounded-2xl text-xs">TAMBAH MISI</button>
+                  <form onSubmit={handleAddTask} className="p-4 border-t border-slate-700 bg-slate-900/10 space-y-3 text-xs">
+                    <select required value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"><option value="">Tugaskan Kepada...</option>{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                    <input type="text" placeholder="Judul Misi (Misal: Sholat Tepat Waktu)" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+                    <div className="grid grid-cols-2 gap-2">
+                       <select value={taskForm.type} onChange={e => setTaskForm({...taskForm, type: e.target.value})} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"><option value="Daily">Rutinitas</option><option value="Achievement">Pencapaian</option></select>
+                       <input type="number" placeholder="Hadiah Bintang" value={taskForm.reward} onChange={e => setTaskForm({...taskForm, reward: Number(e.target.value)})} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+                    </div>
+                    <button type="submit" className="w-full bg-slate-700 text-white font-black py-2 rounded-lg">Tambah Misi</button>
                   </form>
                 )}
               </div>
 
-              {/* List Hapus */}
-              <div className="bg-slate-900/40 p-6 rounded-[2rem] border border-slate-700 space-y-3">
-                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 mb-4">Manajemen Data</h3>
-                {profiles.map(p => (
-                  <div key={p.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-2xl border border-slate-700/50">
-                    <span className="text-xs font-bold">{p.avatar} {p.name}</span>
-                    <button onClick={() => handleDeleteProfile(p.id)} className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-1 rounded-lg">HAPUS</button>
-                  </div>
-                ))}
+              <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <button type="button" onClick={() => setShowRewardForm(!showRewardForm)} className="w-full px-4 py-3 flex justify-between text-xs font-black text-white bg-slate-800/50"><span>🎁 BUAT DAFTAR HADIAH</span><span>{showRewardForm?'▲':'▼'}</span></button>
+                {showRewardForm && (
+                  <form onSubmit={handleAddReward} className="p-4 border-t border-slate-700 bg-slate-900/10 space-y-3 text-xs">
+                    <select required value={rewardForm.assignedTo} onChange={e => setRewardForm({...rewardForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"><option value="">Pilih Anak...</option>{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                    <input type="text" placeholder="Nama Hadiah (Misal: Es Krim / Mainan Lego)" required value={rewardForm.title} onChange={e => setRewardForm({...rewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+                    <input type="number" placeholder="Harga Bintang" value={rewardForm.cost} onChange={e => setRewardForm({...rewardForm, cost: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+                    <button type="submit" className="w-full bg-orange-500 text-slate-950 font-black py-2 rounded-lg">Tambah Hadiah</button>
+                  </form>
+                )}
+              </div>
+
+              {/* Data Lists for deletion management */}
+              <div className="bg-slate-900/40 p-4 border border-slate-700 rounded-xl space-y-4 text-xs">
+                 <h3 className="font-black text-slate-400 uppercase tracking-wider border-b border-slate-800 pb-1">Manajemen Penghapusan Data</h3>
+                 <div className="space-y-1.5">
+                    {profiles.map(p => ( <div key={p.id} className="flex justify-between items-center bg-slate-800 p-2 rounded-lg border border-slate-700"><span>👶 Akun: <b>{p.name}</b></span><button onClick={() => handleDeleteProfile(p.id)} className="text-red-400 font-bold">Hapus</button></div> ))}
+                    {tasks.map(t => ( <div key={t.id} className="flex justify-between items-center bg-slate-800 p-2 rounded-lg border border-slate-700/60"><span>🎯 Misi: {t.title}</span><button onClick={() => handleDeleteTask(t.id)} className="text-red-400 text-[10px]">Hapus</button></div> ))}
+                    {rewards.map(r => ( <div key={r.id} className="flex justify-between items-center bg-slate-800 p-2 rounded-lg border border-slate-700/60"><span>🎁 Hadiah: {r.title}</span><button onClick={() => handleDeleteReward(r.id)} className="text-red-400 text-[10px]">Hapus</button></div> ))}
+                 </div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* FOOTER SWITCHER */}
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur-xl p-2 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2">
-        <button onClick={() => setCurrentRole('child')} className={`px-8 py-3 rounded-full text-xs font-black transition-all ${currentRole === 'child' ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>MODE ANAK</button>
-        <button onClick={() => setCurrentRole('parent')} className={`px-8 py-3 rounded-full text-xs font-black transition-all ${currentRole === 'parent' ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-950 shadow-lg' : 'text-slate-400 hover:text-white'}`}>MODE ORANG TUA</button>
+      {/* FOOTER SWITCHER MODE TAB */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-1">
+        <button type="button" onClick={() => setCurrentRole('child')} className={`px-6 py-2.5 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'child' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}>👦👧 Mode Anak</button>
+        <button type="button" onClick={() => setCurrentRole('parent')} className={`px-6 py-2.5 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'parent' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-lg' : 'text-slate-400'}`}>👨👩 Mode Orang Tua</button>
       </div>
     </div>
   );
