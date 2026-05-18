@@ -86,7 +86,7 @@ export default function App() {
   const [showRewardForm, setShowRewardForm] = useState(false);
 
   const [childRoutineOpen, setChildRoutineOpen] = useState<{ [key: string]: boolean }>({});
-  const [childChecklistOpen, setChildChecklistOpen] = useState<{ [key: string]: boolean }>({});
+  const [childAchieveOpen, setChildAchieveOpen] = useState<{ [key: string]: boolean }>({});
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -221,6 +221,7 @@ export default function App() {
     try {
       if (isRegistering) {
         const res = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        // Daftarkan email di DB untuk mempermudah pencarian owner saat aktivasi
         await update(ref(db, `users/${res.user.uid}`), { isPremium: false, email: res.user.email });
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
@@ -323,7 +324,7 @@ export default function App() {
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">Memuat... 🌟</div>;
   }
 
-  // 🔒 HALAMAN LOGIN USER (LOGO DAN NAMA SUDAH DISESUAIKAN)
+  // 🔒 HALAMAN LOGIN USER (LOGO BINTANG TUNGGAL & NAMA STARJAR BERSIH)
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
@@ -357,19 +358,26 @@ export default function App() {
     );
   }
 
-  // 🛑 HALAMAN PAYWALL PREMIUM
+  // 🛑 HALAMAN PROSES PREMIUM (ALUR JUALAN LYNK.ID)
   if (!isPremium) {
-    const waMessage = encodeURIComponent(`Halo Admin StarJar, saya ingin mengaktifkan akun premium.\nEmail: ${user.email}`);
+    const waMessage = encodeURIComponent(`Halo Admin StarJar, saya sudah membeli via Lynk.id dan baru saja mendaftar.\n\nMohon bantu aktivasi akun saya.\nEmail Terdaftar: ${user.email}`);
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-md rounded-[2.5rem] border-2 border-red-500/30 p-8 text-center space-y-6">
-          <span className="text-7xl block">🔒</span>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-orange-400">Toples Masih Terkunci!</h1>
-          <p className="text-slate-400 text-sm">Akun <span className="text-white font-bold">{user.email}</span> aktif, silakan beli lisensi untuk membuka gembok.</p>
-          <a href={`https://wa.me/628123456789?text=${waMessage}`} target="_blank" rel="noopener noreferrer" className="block w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black py-3 rounded-xl text-sm">
-            💬 Hubungi Admin via WhatsApp
-          </a>
-          <button type="button" onClick={handleLogout} className="text-xs text-slate-500 underline">Keluar Akun</button>
+        <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-md rounded-[2.5rem] border-2 border-yellow-500/20 p-8 text-center space-y-6">
+          <span className="text-7xl block animate-pulse">⏳</span>
+          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-400">Akun Sedang Diproses!</h1>
+          <p className="text-slate-400 text-sm">
+            Sip, akun <span className="text-white font-bold">{user.email}</span> berhasil didaftarkan!
+          </p>
+          <p className="text-slate-400 text-xs bg-slate-900/60 p-4 rounded-xl border border-slate-700 leading-relaxed">
+            Karena Anda sudah membayar di Lynk.id, mohon tunggu beberapa menit ya. Admin sedang memverifikasi data dan mengaktifkan toples bintang keluarga Anda (Biasanya cuma 5-10 menit).
+          </p>
+          <div className="space-y-3">
+            <a href={`https://wa.me/628123456789?text=${waMessage}`} target="_blank" rel="noopener noreferrer" className="block w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black py-3 rounded-xl text-sm">
+              💬 Hubungi Admin (Jika Belum Aktif)
+            </a>
+            <button type="button" onClick={handleLogout} className="text-xs text-slate-500 underline block mx-auto">Keluar / Ganti Akun</button>
+          </div>
         </div>
       </div>
     );
