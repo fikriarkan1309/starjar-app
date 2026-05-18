@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// --- IMPORT FIREBASE ---
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
@@ -13,27 +12,55 @@ const firebaseConfig = {
   appId: "1:834288744757:web:8babfcb387284efc54347c"
 };
 
-// Inisialisasi Aplikasi Firebase & Database
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// --- FUNGSI HELPER UNTUK WAKTU ---
-const getWeekNumber = (d) => {
+// --- DEFINISI INTERFACE TYPESCRIPT (BIAR VERCEL JOS) ---
+interface Profile {
+  id: string;
+  name: string;
+  role: string;
+  stars: number;
+  maxStars: number;
+  avatar: string;
+  theme: string;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  type: string;
+  recurrence: string;
+  reward: number;
+  isDone: boolean;
+  isApproved: boolean;
+  assignedTo: number | string;
+}
+
+interface Reward {
+  id: string;
+  title: string;
+  cost: number;
+  isClaimed: boolean;
+  isApproved: boolean;
+  assignedTo: number | string;
+}
+
+const getWeekNumber = (d: Date): string => {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay()||7));
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
-  const weekNo = Math.ceil(( ( (date - yearStart) / 86400000) + 1)/7);
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   return date.getUTCFullYear() + '-' + weekNo;
 };
 
 export default function App() {
-  const [currentRole, setCurrentRole] = useState('parent');
-  const [activeCatalogId, setActiveCatalogId] = useState(null);
-  const [parentTab, setParentTab] = useState('manage'); 
-  const [celebration, setCelebration] = useState(null);
+  const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
+  const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
+  const [parentTab, setParentTab] = useState<'stats' | 'approval' | 'manage'>('manage'); 
+  const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
 
-  // --- EFEK SUARA & ANIMASI ---
-  const playSound = (type) => {
+  const playSound = (type: 'success' | 'tada') => {
     try {
       const url = type === 'success' 
         ? 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3' 
@@ -43,43 +70,35 @@ export default function App() {
     } catch (e) { console.log(e); }
   };
 
-  const triggerCelebration = (type) => {
+  const triggerCelebration = (type: 'task' | 'reward') => {
     playSound(type === 'reward' ? 'tada' : 'success');
     setCelebration(type);
     setTimeout(() => setCelebration(null), 2500);
   };
 
-  // --- STATE DATA UTAMA (DARI FIREBASE) ---
-  const [profiles, setProfiles] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [rewards, setRewards] = useState([]);
+  // --- STATE DENGAN TIPE DATA STRUKTUR ---
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [rewards, setRewards] = useState<Reward[]>([]);
 
-  // --- EFEK: MENGAMBIL DATA DARI FIREBASE SECARA REAL-TIME ---
   useEffect(() => {
-    // Sinkronisasi Profil
     const unsubProfiles = onSnapshot(collection(db, 'profiles'), (snapshot) => {
-      setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Profile)));
     });
 
-    // Sinkronisasi Hadiah
     const unsubRewards = onSnapshot(collection(db, 'rewards'), (snapshot) => {
-      setRewards(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRewards(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reward)));
     });
 
-    // Sinkronisasi Tugas & Reset Otomatis
     const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
-      const loadedTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const loadedTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
       setTasks(loadedTasks);
 
-      // Logika Mesin Waktu (Reset Rutinitas)
       const today = new Date();
       const todayStr = today.toDateString();
       const currentWeek = getWeekNumber(today);
       const currentMonth = today.getFullYear() + '-' + today.getMonth();
 
-      let isDateChanged = false;
-
-      // Cek apakah hari sudah berganti di HP/Browser ini
       if (localStorage.getItem('lastDailyReset') !== todayStr) {
         loadedTasks.forEach(t => {
           if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) {
@@ -111,26 +130,26 @@ export default function App() {
     return () => { unsubProfiles(); unsubTasks(); unsubRewards(); };
   }, []);
 
-  // --- STATE FORM INPUT ---
+  // --- STATE INPUT ---
   const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
   const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: 'all' });
   const [rewardForm, setRewardForm] = useState({ title: '', cost: 10, assignedTo: 'all' });
 
-  const [editingProfileId, setEditingProfileId] = useState(null);
-  const [editProfileForm, setEditProfileForm] = useState({});
-  const [editingTaskId, setEditingTaskId] = useState(null);
-  const [editTaskForm, setEditTaskForm] = useState({});
-  const [editingRewardId, setEditingRewardId] = useState(null);
-  const [editRewardForm, setEditRewardForm] = useState({});
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [editProfileForm, setEditProfileForm] = useState<Partial<Profile>>({});
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTaskForm, setEditTaskForm] = useState<Partial<Task>>({});
+  const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
+  const [editRewardForm, setEditRewardForm] = useState<Partial<Reward>>({});
 
-  // --- FUNGSI AKSES ANAK (UPDATE FIREBASE) ---
-  const handleCompleteTask = async (taskId) => {
+  const handleCompleteTask = async (taskId: string) => {
     triggerCelebration('task');
     await updateDoc(doc(db, 'tasks', taskId), { isDone: true });
   };
 
-  const handleClaimReward = async (rewardId, childId, cost) => {
+  const handleClaimReward = async (rewardId: string, childId: string, cost: number) => {
     const child = profiles.find(p => p.id === childId);
+    if (!child) return;
     if (child.stars < cost) return alert("Bintangmu belum cukup! 💪🌟");
     
     triggerCelebration('reward');
@@ -138,19 +157,19 @@ export default function App() {
     await updateDoc(doc(db, 'rewards', rewardId), { isClaimed: true });
   };
 
-  // --- FUNGSI AKSES ORANG TUA (APPROVAL FIREBASE) ---
-  const handleApproveTask = async (taskId, childId, reward) => {
+  const handleApproveTask = async (taskId: string, childId: string | undefined, reward: number) => {
+    if (!childId) return;
     const child = profiles.find(p => p.id === childId);
+    if (!child) return;
     await updateDoc(doc(db, 'tasks', taskId), { isApproved: true });
     await updateDoc(doc(db, 'profiles', childId), { stars: Math.min(child.stars + reward, child.maxStars) });
   };
 
-  const handleApproveReward = async (rewardId) => {
+  const handleApproveReward = async (rewardId: string) => {
     await updateDoc(doc(db, 'rewards', rewardId), { isApproved: true });
   };
 
-  // --- FUNGSI TAMBAH DATA (CREATE FIREBASE) ---
-  const handleAddProfile = async (e) => {
+  const handleAddProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileForm.name) return;
     await addDoc(collection(db, 'profiles'), { 
@@ -161,7 +180,7 @@ export default function App() {
     setProfileForm({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
   };
 
-  const handleAddTask = async (e) => {
+  const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskForm.title || profiles.length === 0) return;
     
@@ -181,7 +200,7 @@ export default function App() {
     setTaskForm({ ...taskForm, title: '' }); 
   };
 
-  const handleAddReward = async (e) => {
+  const handleAddReward = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rewardForm.title || profiles.length === 0) return;
 
@@ -200,43 +219,44 @@ export default function App() {
     setRewardForm({ ...rewardForm, title: '' });
   };
 
-  // --- FUNGSI EDIT & HAPUS (UPDATE/DELETE FIREBASE) ---
-  const startEditProfile = (profile) => { setEditingProfileId(profile.id); setEditProfileForm({ ...profile }); };
+  const startEditProfile = (profile: Profile) => { setEditingProfileId(profile.id); setEditProfileForm({ ...profile }); };
   const saveEditProfile = async () => {
+    if (!editingProfileId) return;
     await updateDoc(doc(db, 'profiles', editingProfileId), { 
       ...editProfileForm, maxStars: Number(editProfileForm.maxStars) 
     });
     setEditingProfileId(null);
   };
-  const handleDeleteProfile = async (id) => {
+  const handleDeleteProfile = async (id: string) => {
     if (window.confirm('Yakin menghapus akun ini beserta Misi dan Hadiahnya?')) {
       await deleteDoc(doc(db, 'profiles', id));
-      // Bersihkan misi dan hadiah yang nempel di profil ini
       tasks.filter(t => t.assignedTo === id).forEach(t => deleteDoc(doc(db, 'tasks', t.id)));
       rewards.filter(r => r.assignedTo === id).forEach(r => deleteDoc(doc(db, 'rewards', r.id)));
     }
   };
 
-  const startEditTask = (task) => { setEditingTaskId(task.id); setEditTaskForm({ ...task }); };
+  const startEditTask = (task: Task) => { setEditingTaskId(task.id); setEditTaskForm({ ...task }); };
   const saveEditTask = async () => {
+    if (!editingTaskId) return;
     await updateDoc(doc(db, 'tasks', editingTaskId), { 
       ...editTaskForm, reward: Number(editTaskForm.reward), 
       recurrence: editTaskForm.type === 'Daily' ? editTaskForm.recurrence : 'none' 
     });
     setEditingTaskId(null);
   };
-  const handleDeleteTask = async (id) => await deleteDoc(doc(db, 'tasks', id));
+  const handleDeleteTask = async (id: string) => await deleteDoc(doc(db, 'tasks', id));
 
-  const startEditReward = (reward) => { setEditingRewardId(reward.id); setEditRewardForm({ ...reward }); };
+  const startEditReward = (reward: Reward) => { setEditingRewardId(reward.id); setEditRewardForm({ ...reward }); };
   const saveEditReward = async () => {
+    if (!editingRewardId) return;
     await updateDoc(doc(db, 'rewards', editingRewardId), { 
       ...editRewardForm, cost: Number(editRewardForm.cost) 
     });
     setEditingRewardId(null);
   };
-  const handleDeleteReward = async (id) => await deleteDoc(doc(db, 'rewards', id));
+  const handleDeleteReward = async (id: string) => await deleteDoc(doc(db, 'rewards', id));
 
-  const getTaskLabel = (task) => {
+  const getTaskLabel = (task: Task) => {
     if (task.type === 'Achievement') return '🏆 Pencapaian';
     if (task.recurrence === 'daily') return '🔄 Harian';
     if (task.recurrence === 'weekly') return '🔄 Mingguan';
@@ -244,9 +264,6 @@ export default function App() {
     return '🔄 Rutinitas';
   };
 
-  // =========================================================================
-  // RENDER VIEW ANAK
-  // =========================================================================
   const renderChildView = () => (
     <div className="space-y-12 max-w-6xl mx-auto animate-fade-in">
       <header className="text-center space-y-4">
@@ -344,9 +361,6 @@ export default function App() {
     </div>
   );
 
-  // =========================================================================
-  // RENDER VIEW ORANG TUA
-  // =========================================================================
   const renderParentView = () => {
     const pendingTasks = tasks.filter(t => t.isDone && !t.isApproved);
     const pendingRewards = rewards.filter(r => r.isClaimed && !r.isApproved);
@@ -528,12 +542,12 @@ export default function App() {
                         <div key={p.id} className="bg-slate-800 p-4 rounded-xl border border-blue-500 shadow-xl col-span-1 sm:col-span-2 space-y-3 animate-fade-in">
                           <h4 className="text-blue-400 font-bold text-sm mb-2">✏️ Edit Akun</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div><label className="text-[10px] text-slate-400 uppercase">Nama</label><input type="text" value={editProfileForm.name} onChange={e => setEditProfileForm({...editProfileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
-                            <div><label className="text-[10px] text-slate-400 uppercase">Status</label><input type="text" value={editProfileForm.role} onChange={e => setEditProfileForm({...editProfileForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
-                            <div><label className="text-[10px] text-yellow-400 uppercase">Max Toples</label><input type="number" value={editProfileForm.maxStars} onChange={e => setEditProfileForm({...editProfileForm, maxStars: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
+                            <div><label className="text-[10px] text-slate-400 uppercase">Nama</label><input type="text" value={editProfileForm.name || ''} onChange={e => setEditProfileForm({...editProfileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
+                            <div><label className="text-[10px] text-slate-400 uppercase">Status</label><input type="text" value={editProfileForm.role || ''} onChange={e => setEditProfileForm({...editProfileForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
+                            <div><label className="text-[10px] text-yellow-400 uppercase">Max Toples</label><input type="number" value={editProfileForm.maxStars || 50} onChange={e => setEditProfileForm({...editProfileForm, maxStars: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
                             <div className="flex gap-2">
-                              <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Avatar</label><select value={editProfileForm.avatar} onChange={e => setEditProfileForm({...editProfileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="👶">👶</option><option value="👧">👧</option><option value="👦">👦</option><option value="👸">👸</option><option value="🤴">🤴</option><option value="🦸‍♀️">🦸‍♀️</option><option value="🦸‍♂️">🦸‍♂️</option><option value="🥷">🥷</option><option value="🦁">🦁</option><option value="🐼">🐼</option><option value="🦊">🦊</option><option value="🐸">🐸</option></select></div>
-                              <div className="w-2/3"><label className="text-[10px] text-slate-400 uppercase">Tema</label><select value={editProfileForm.theme} onChange={e => setEditProfileForm({...editProfileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="from-pink-500 to-rose-400">🩷 Pink</option><option value="from-cyan-500 to-blue-400">🩵 Biru</option><option value="from-purple-500 to-indigo-400">💜 Ungu</option><option value="from-emerald-400 to-teal-400">💚 Hijau</option><option value="from-orange-400 to-red-400">❤️ Merah</option><option value="from-yellow-400 to-amber-500">💛 Kuning</option></select></div>
+                              <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Avatar</label><select value={editProfileForm.avatar || '👶'} onChange={e => setEditProfileForm({...editProfileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="👶">👶</option><option value="👧">👧</option><option value="👦">👦</option><option value="👸">👸</option><option value="🤴">🤴</option><option value="🦸‍♀️">🦸‍♀️</option><option value="🦸‍♂️">🦸‍♂️</option><option value="🥷">🥷</option><option value="🦁">🦁</option><option value="🐼">🐼</option><option value="🦊">🦊</option><option value="🐸">🐸</option></select></div>
+                              <div className="w-2/3"><label className="text-[10px] text-slate-400 uppercase">Tema</label><select value={editProfileForm.theme || 'from-pink-500 to-rose-400'} onChange={e => setEditProfileForm({...editProfileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="from-pink-500 to-rose-400">🩷 Pink</option><option value="from-cyan-500 to-blue-400">🩵 Biru</option><option value="from-purple-500 to-indigo-400">💜 Ungu</option><option value="from-emerald-400 to-teal-400">💚 Hijau</option><option value="from-orange-400 to-red-400">❤️ Merah</option><option value="from-yellow-400 to-amber-500">💛 Kuning</option></select></div>
                             </div>
                           </div>
                           <div className="flex justify-end gap-2 pt-2 border-t border-slate-700"><button onClick={() => setEditingProfileId(null)} className="text-slate-400 hover:text-white px-4 py-2 text-sm font-bold">Batal</button><button onClick={saveEditProfile} className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-lg text-sm font-bold">Simpan</button></div>
@@ -559,17 +573,17 @@ export default function App() {
                       return editingTaskId === t.id ? (
                         <div key={t.id} className="bg-slate-800 p-4 rounded-xl border border-blue-500 shadow-xl space-y-3 animate-fade-in">
                           <div className="flex flex-col gap-3">
-                            <div><label className="text-[10px] text-slate-400 uppercase">Nama Misi</label><input type="text" value={editTaskForm.title} onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
+                            <div><label className="text-[10px] text-slate-400 uppercase">Nama Misi</label><input type="text" value={editTaskForm.title || ''} onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
                             <div className="flex gap-2">
-                              <div className="flex-1"><label className="text-[10px] text-slate-400 uppercase">Kategori</label><select value={editTaskForm.type} onChange={e => setEditTaskForm({...editTaskForm, type: e.target.value, recurrence: e.target.value === 'Daily' ? 'daily' : 'none'})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="Daily">Rutinitas</option><option value="Achievement">Pencapaian</option></select></div>
+                              <div className="flex-1"><label className="text-[10px] text-slate-400 uppercase">Kategori</label><select value={editTaskForm.type || 'Daily'} onChange={e => setEditTaskForm({...editTaskForm, type: e.target.value, recurrence: e.target.value === 'Daily' ? 'daily' : 'none'})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="Daily">Rutinitas</option><option value="Achievement">Pencapaian</option></select></div>
                               {editTaskForm.type === 'Daily' && (
                                 <div className="flex-1"><label className="text-[10px] text-slate-400 uppercase">Ulangi</label><select value={editTaskForm.recurrence || 'daily'} onChange={e => setEditTaskForm({...editTaskForm, recurrence: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="daily">Harian</option><option value="weekly">Mingguan</option><option value="monthly">Bulanan</option></select></div>
                               )}
-                              <div className="w-16"><label className="text-[10px] text-yellow-400 uppercase">Bintang</label><input type="number" value={editTaskForm.reward} onChange={e => setEditTaskForm({...editTaskForm, reward: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm text-center" /></div>
+                              <div className="w-16"><label className="text-[10px] text-yellow-400 uppercase">Bintang</label><input type="number" value={editTaskForm.reward || 0} onChange={e => setEditTaskForm({...editTaskForm, reward: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm text-center" /></div>
                             </div>
                           </div>
                           <div className="flex justify-between items-center border-t border-slate-700 pt-2">
-                            <div className="w-1/2"><select value={editTaskForm.assignedTo} onChange={e => setEditTaskForm({...editTaskForm, assignedTo: e.target.value})} className="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-300 text-xs w-full">{profiles.map(p => <option key={p.id} value={p.id}>Untuk: {p.name}</option>)}</select></div>
+                            <div className="w-1/2"><select value={editTaskForm.assignedTo || ''} onChange={e => setEditTaskForm({...editTaskForm, assignedTo: e.target.value})} className="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-300 text-xs w-full">{profiles.map(p => <option key={p.id} value={p.id}>Untuk: {p.name}</option>)}</select></div>
                             <div className="flex gap-2"><button onClick={() => setEditingTaskId(null)} className="text-slate-400 hover:text-white px-3 py-1.5 text-sm font-bold">Batal</button><button onClick={saveEditTask} className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-1.5 rounded-lg text-sm font-bold">Simpan</button></div>
                           </div>
                         </div>
@@ -597,11 +611,11 @@ export default function App() {
                       return editingRewardId === r.id ? (
                         <div key={r.id} className="bg-slate-800 p-4 rounded-xl border border-blue-500 shadow-xl space-y-3 animate-fade-in">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div className="sm:col-span-2"><label className="text-[10px] text-slate-400 uppercase">Nama Hadiah</label><input type="text" value={editRewardForm.title} onChange={e => setEditRewardForm({...editRewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
-                            <div><label className="text-[10px] text-yellow-400 uppercase">Harga</label><input type="number" value={editRewardForm.cost} onChange={e => setEditRewardForm({...editRewardForm, cost: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
+                            <div className="sm:col-span-2"><label className="text-[10px] text-slate-400 uppercase">Nama Hadiah</label><input type="text" value={editRewardForm.title || ''} onChange={e => setEditRewardForm({...editRewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
+                            <div><label className="text-[10px] text-yellow-400 uppercase">Harga</label><input type="number" value={editRewardForm.cost || 0} onChange={e => setEditRewardForm({...editRewardForm, cost: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm" /></div>
                           </div>
                           <div className="flex justify-between items-center border-t border-slate-700 pt-2">
-                            <div className="w-1/2"><select value={editRewardForm.assignedTo} onChange={e => setEditRewardForm({...editRewardForm, assignedTo: e.target.value})} className="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-300 text-xs w-full">{profiles.map(p => <option key={p.id} value={p.id}>Untuk: {p.name}</option>)}</select></div>
+                            <div className="w-1/2"><select value={editRewardForm.assignedTo || ''} onChange={e => setEditRewardForm({...editRewardForm, assignedTo: e.target.value})} className="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-300 text-xs w-full">{profiles.map(p => <option key={p.id} value={p.id}>Untuk: {p.name}</option>)}</select></div>
                             <div className="flex gap-2"><button onClick={() => setEditingRewardId(null)} className="text-slate-400 hover:text-white px-3 py-1.5 text-sm font-bold">Batal</button><button onClick={saveEditReward} className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-1.5 rounded-lg text-sm font-bold">Simpan</button></div>
                           </div>
                         </div>
@@ -617,9 +631,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        )}
-      </div>
-    );
+        );
   };
 
   return (
