@@ -10,7 +10,7 @@ const firebaseConfig = {
   storageBucket: "starjar-f3461.firebasestorage.app",
   messagingSenderId: "834288744757",
   appId: "1:834288744757:web:8babfcb387284efc54347c",
-  databaseURL: "https://starjar-f3461-default-rtdb.firebaseio.com" // Menyesuaikan URL RTDB bawaan Google
+  databaseURL: "https://starjar-f3461-default-rtdb.asia-southeast1.firebasedatabase.app/" // Menyesuaikan URL RTDB bawaan Google
 };
 
 const app = initializeApp(firebaseConfig);
