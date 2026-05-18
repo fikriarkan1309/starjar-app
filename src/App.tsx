@@ -596,6 +596,7 @@ export default function App() {
 
                   {/* Accordion Misi Pencapaian */}
                   <div className="bg-slate-900/40 border border-slate-700 rounded-2xl overflow-hidden">
+                    <button type="button" onClick={() => toggleChildChoose(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left" style={{display: 'none'}}> {/* Backup layout block */} </button>
                     <button type="button" onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-slate-200">🏆 Misi Pencapaian</span>
@@ -777,7 +778,7 @@ export default function App() {
                   <form onSubmit={handleAddTask} className="space-y-4">
                     <div>
                       <label className="text-xs text-slate-400 mb-1 block">Untuk Anak:</label>
-                      <select value={taskForm.assignedTo} onChange{(e) => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-bold">
+                      <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-bold">
                         <option value="all">🌟 Semua Anak</option>
                         {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
