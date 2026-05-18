@@ -187,7 +187,7 @@ export default function App() {
         cost: typeof data[key].cost === 'number' ? data[key].cost : 10,
         isClaimed: !!data[key].isClaimed,
         isApproved: !!data[key].isApproved,
-        assignedTo: data[key].assignedTo || ''
+        assignedTo: String(data[key].assignedTo || '')
       } as Reward));
       setRewards(rData);
     });
@@ -203,7 +203,7 @@ export default function App() {
         reward: typeof data[key].reward === 'number' ? data[key].reward : 2,
         isDone: !!data[key].isDone,
         isApproved: !!data[key].isApproved,
-        assignedTo: data[key].assignedTo || ''
+        assignedTo: String(data[key].assignedTo || '')
       } as Task));
       
       setTasks(tData);
@@ -390,7 +390,7 @@ export default function App() {
     try {
       if (isRegistering) {
         const res = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        await update(ref(db, `users/${res.user.uid}`), { isPremium: false, email: res.user.email });
+        await update(ref(db, `users/${res.user.uid}`), { isPremium: false, email: res.user.email || '' });
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
       }
@@ -436,6 +436,16 @@ export default function App() {
   // =========================================================================
   // VIEW RENDERERS UTAMA (SINKRON 100% SESUAI FILE VALID DAN VIDEO)
   // =========================================================================
+  if (loadingAuth || loadingPremium) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
+         <div className="text-center space-y-3">
+           <div className="text-6xl animate-spin">🌟</div>
+           <p className="animate-pulse">MEMUAT STARJAR...</p>
+         </div>
+      </div>
+    );
+  }
   
   // 🔒 A. TAMPILAN HALAMAN LOGIN AWAL MINIMALIS 🌟
   if (!user) {
@@ -521,7 +531,7 @@ export default function App() {
          <div className="text-center p-12 bg-slate-800/50 rounded-3xl border border-slate-700">
             <span className="text-6xl mb-4 block">👋</span>
             <h2 className="text-2xl font-bold text-white mb-2">Belum ada profil Anak</h2>
-            <p className="text-slate-400">Ayah/Ibu perlu menambahkan profil anak di panel orang tua terlebih dahulu.</p>
+            <p className="text-slate-400">Ayah/Ibu perlu menambahkan profil anak di panel Ortu terlebih dahulu.</p>
          </div>
       )}
 
@@ -917,7 +927,7 @@ export default function App() {
       {/* FOOTER SWITCHER NAVIGASI MODE */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-1">
         <button type="button" onClick={() => setCurrentRole('child')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'child' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>👦👧 Mode Anak</button>
-        <button type="button" onClick={() => setCurrentRole('parent')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'parent' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-lg' : 'text-slate-400 hover:text-white'}`}>👨👩 Mode Orang Tua</button>
+        <button type="button" onClick={() => setCurrentRole('parent')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'parent' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-lg' : 'text-slate-400 hover:text-white'}`}>👨👩 Mode Ortu</button>
       </div>
     </div>
   );
