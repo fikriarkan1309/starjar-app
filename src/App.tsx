@@ -15,7 +15,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// --- DEFINISI INTERFACE TYPESCRIPT (BIAR VERCEL JOS) ---
+// --- DEFINISI INTERFACE TYPESCRIPT ---
 interface Profile {
   id: string;
   name: string;
@@ -34,7 +34,7 @@ interface Task {
   reward: number;
   isDone: boolean;
   isApproved: boolean;
-  assignedTo: number | string;
+  assignedTo: string | number;
 }
 
 interface Reward {
@@ -43,7 +43,7 @@ interface Reward {
   cost: number;
   isClaimed: boolean;
   isApproved: boolean;
-  assignedTo: number | string;
+  assignedTo: string | number;
 }
 
 const getWeekNumber = (d: Date): string => {
@@ -76,31 +76,68 @@ export default function App() {
     setTimeout(() => setCelebration(null), 2500);
   };
 
-  // --- STATE DENGAN TIPE DATA STRUKTUR ---
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
 
   useEffect(() => {
+    // Parsing data Firebase dengan Type-Safe yang disukai Vercel
     const unsubProfiles = onSnapshot(collection(db, 'profiles'), (snapshot) => {
-      setProfiles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Profile)));
+      const pData = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          name: data.name || '',
+          role: data.role || '',
+          stars: typeof data.stars === 'number' ? data.stars : 0,
+          maxStars: typeof data.maxStars === 'number' ? data.maxStars : 50,
+          avatar: data.avatar || '👶',
+          theme: data.theme || 'from-pink-500 to-rose-400'
+        } as Profile;
+      });
+      setProfiles(pData);
     });
 
     const unsubRewards = onSnapshot(collection(db, 'rewards'), (snapshot) => {
-      setRewards(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reward)));
+      const rData = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          title: data.title || '',
+          cost: typeof data.cost === 'number' ? data.cost : 10,
+          isClaimed: !!data.isClaimed,
+          isApproved: !!data.isApproved,
+          assignedTo: data.assignedTo || ''
+        } as Reward;
+      });
+      setRewards(rData);
     });
 
     const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
-      const loadedTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
-      setTasks(loadedTasks);
+      const tData = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          title: data.title || '',
+          type: data.type || 'Daily',
+          recurrence: data.recurrence || 'none',
+          reward: typeof data.reward === 'number' ? data.reward : 2,
+          isDone: !!data.isDone,
+          isApproved: !!data.isApproved,
+          assignedTo: data.assignedTo || ''
+        } as Task;
+      });
+      
+      setTasks(tData);
 
+      // Logika Reset Waktu
       const today = new Date();
       const todayStr = today.toDateString();
       const currentWeek = getWeekNumber(today);
       const currentMonth = today.getFullYear() + '-' + today.getMonth();
 
       if (localStorage.getItem('lastDailyReset') !== todayStr) {
-        loadedTasks.forEach(t => {
+        tData.forEach(t => {
           if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) {
             updateDoc(doc(db, 'tasks', t.id), { isDone: false, isApproved: false });
           }
@@ -109,7 +146,7 @@ export default function App() {
       }
 
       if (localStorage.getItem('lastWeeklyReset') !== currentWeek) {
-        loadedTasks.forEach(t => {
+        tData.forEach(t => {
           if (t.type === 'Daily' && t.recurrence === 'weekly' && (t.isDone || t.isApproved)) {
             updateDoc(doc(db, 'tasks', t.id), { isDone: false, isApproved: false });
           }
@@ -118,7 +155,7 @@ export default function App() {
       }
 
       if (localStorage.getItem('lastMonthlyReset') !== currentMonth) {
-        loadedTasks.forEach(t => {
+        tData.forEach(t => {
           if (t.type === 'Daily' && t.recurrence === 'monthly' && (t.isDone || t.isApproved)) {
             updateDoc(doc(db, 'tasks', t.id), { isDone: false, isApproved: false });
           }
@@ -223,7 +260,7 @@ export default function App() {
   const saveEditProfile = async () => {
     if (!editingProfileId) return;
     await updateDoc(doc(db, 'profiles', editingProfileId), { 
-      ...editProfileForm, maxStars: Number(editProfileForm.maxStars) 
+      ...editProfileForm, maxStars: Number(editProfileForm.maxStars || 50) 
     });
     setEditingProfileId(null);
   };
@@ -239,7 +276,7 @@ export default function App() {
   const saveEditTask = async () => {
     if (!editingTaskId) return;
     await updateDoc(doc(db, 'tasks', editingTaskId), { 
-      ...editTaskForm, reward: Number(editTaskForm.reward), 
+      ...editTaskForm, reward: Number(editTaskForm.reward || 0), 
       recurrence: editTaskForm.type === 'Daily' ? editTaskForm.recurrence : 'none' 
     });
     setEditingTaskId(null);
@@ -250,7 +287,7 @@ export default function App() {
   const saveEditReward = async () => {
     if (!editingRewardId) return;
     await updateDoc(doc(db, 'rewards', editingRewardId), { 
-      ...editRewardForm, cost: Number(editRewardForm.cost) 
+      ...editRewardForm, cost: Number(editRewardForm.cost || 0) 
     });
     setEditingRewardId(null);
   };
@@ -311,7 +348,7 @@ export default function App() {
 
                 <div className="space-y-4 relative z-10 mb-8">
                   <h3 className="text-slate-400 font-bold uppercase tracking-widest text-sm mb-2">🎯 Misimu:</h3>
-                  {tasks.filter(t => t.assignedTo === profile.id && !t.isApproved).map(task => (
+                  {tasks.filter(t => String(t.assignedTo) === String(profile.id) && !t.isApproved).map(task => (
                     <div key={task.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-3xl border bg-slate-900/40 border-slate-700 gap-3">
                       <div>
                         <p className="text-base font-bold text-slate-100">{task.title}</p>
@@ -324,7 +361,7 @@ export default function App() {
                       </button>
                     </div>
                   ))}
-                  {tasks.filter(t => t.assignedTo === profile.id && !t.isApproved).length === 0 && (
+                  {tasks.filter(t => String(t.assignedTo) === String(profile.id) && !t.isApproved).length === 0 && (
                      <p className="text-slate-500 text-sm italic">Hore! Belum ada misi baru.</p>
                   )}
                 </div>
@@ -337,7 +374,7 @@ export default function App() {
 
                 {activeCatalogId === profile.id && (
                   <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-3xl p-5 space-y-3 animate-fade-in">
-                    {rewards.filter(r => r.assignedTo === profile.id && !r.isApproved).map(reward => (
+                    {rewards.filter(r => String(r.assignedTo) === String(profile.id) && !r.isApproved).map(reward => (
                       <div key={reward.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl bg-slate-800/80 border border-slate-700 gap-3">
                         <div>
                           <p className={`font-bold text-sm ${reward.isClaimed ? 'text-slate-500 line-through' : 'text-slate-200'}`}>{reward.title}</p>
@@ -348,7 +385,7 @@ export default function App() {
                         </button>
                       </div>
                     ))}
-                    {rewards.filter(r => r.assignedTo === profile.id && !r.isApproved).length === 0 && (
+                    {rewards.filter(r => String(r.assignedTo) === String(profile.id) && !r.isApproved).length === 0 && (
                       <p className="text-slate-500 text-xs italic text-center">Belum ada hadiah di katalog.</p>
                     )}
                   </div>
@@ -364,7 +401,6 @@ export default function App() {
   const renderParentView = () => {
     const pendingTasks = tasks.filter(t => t.isDone && !t.isApproved);
     const pendingRewards = rewards.filter(r => r.isClaimed && !r.isApproved);
-
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.isApproved).length;
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -376,7 +412,6 @@ export default function App() {
             <h1 className="text-3xl font-black text-white">Halo, Ayah & Ibu! 👋</h1>
             <p className="text-slate-400 mt-2 text-sm">Pusat Kendali Aplikasi Keluarga.</p>
           </div>
-          
           <div className="flex bg-slate-800 p-1 rounded-2xl border border-slate-700 overflow-x-auto w-full md:w-auto">
             <button onClick={() => setParentTab('stats')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'stats' ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📊 Statistik</button>
             <button onClick={() => setParentTab('approval')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'approval' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>🔔 Persetujuan {(pendingTasks.length > 0 || pendingRewards.length > 0) && (<span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingTasks.length + pendingRewards.length}</span>)}</button>
@@ -396,7 +431,6 @@ export default function App() {
                   <div><p className="text-slate-400 text-sm font-bold uppercase tracking-wider">Rasio Misi Selesai</p><div className="flex items-baseline gap-2"><p className="text-4xl font-black text-white">{completionRate}%</p><p className="text-slate-500 text-sm">({completedTasks}/{totalTasks})</p></div></div>
                </div>
             </div>
-
             <div className="bg-slate-800 rounded-3xl p-6 md:p-8 border border-slate-700 shadow-xl">
                <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><span className="bg-indigo-500/20 text-indigo-400 p-1.5 rounded-lg text-sm">📈</span> Progres Toples Bintang</h2>
                <div className="space-y-6">
@@ -426,26 +460,25 @@ export default function App() {
               {pendingTasks.length === 0 && <p className="text-slate-500 text-sm">Belum ada tugas menunggu.</p>}
               <div className="space-y-3">
                 {pendingTasks.map(task => {
-                  const child = profiles.find(p => p.id === task.assignedTo);
+                  const child = profiles.find(p => String(p.id) === String(task.assignedTo));
                   return (
                     <div key={task.id} className="flex justify-between items-center p-4 rounded-2xl bg-slate-900 border border-slate-700">
-                      <div><p className="text-slate-400 text-xs">{child?.name} menyelesaikan:</p><p className="text-base font-bold text-white">{task.title}</p></div>
+                      <div><p className="text-slate-400 text-xs">{child?.name || 'Anak'} menyelesaikan:</p><p className="text-base font-bold text-white">{task.title}</p></div>
                       <button onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className="bg-green-500 hover:bg-green-400 text-slate-900 font-black px-4 py-2 rounded-xl text-sm transition-all shadow-md">Setujui +{task.reward}⭐</button>
                     </div>
                   );
                 })}
               </div>
             </div>
-
             <div className="bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-xl">
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><span className="bg-orange-500/20 text-orange-400 p-1.5 rounded-lg text-sm">🎁</span> Klaim Hadiah ({pendingRewards.length})</h2>
               {pendingRewards.length === 0 && <p className="text-slate-500 text-sm">Belum ada hadiah diklaim.</p>}
               <div className="space-y-3">
                 {pendingRewards.map(reward => {
-                  const child = profiles.find(p => p.id === reward.assignedTo);
+                  const child = profiles.find(p => String(p.id) === String(reward.assignedTo));
                   return (
                     <div key={reward.id} className="flex justify-between items-center p-4 rounded-2xl bg-slate-900 border border-orange-500/30">
-                      <div><p className="text-orange-400 text-xs">{child?.name} ingin:</p><p className="text-base font-bold text-white">{reward.title}</p></div>
+                      <div><p className="text-orange-400 text-xs">{child?.name || 'Anak'} ingin:</p><p className="text-base font-bold text-white">{reward.title}</p></div>
                       <button onClick={() => handleApproveReward(reward.id)} className="bg-orange-500 hover:bg-orange-400 text-white font-black px-4 py-2 rounded-xl text-sm transition-all shadow-md">Sudah Diberikan ✓</button>
                     </div>
                   );
@@ -458,7 +491,6 @@ export default function App() {
         {parentTab === 'manage' && (
           <div className="space-y-8 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
               <div className="bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-xl md:col-span-2">
                 <h2 className="text-lg font-bold text-white mb-4">👶 Tambah Akun Anak</h2>
                 <form onSubmit={handleAddProfile} className="space-y-4">
@@ -467,7 +499,7 @@ export default function App() {
                     <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Status</label><input type="text" value={profileForm.role} onChange={e => setProfileForm({...profileForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="w-full sm:w-1/4"><label className="text-xs text-yellow-400 mb-1 block">Kapasitas Toples</label><input type="number" required value={profileForm.maxStars} onChange={e => setProfileForm({...profileForm, maxStars: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
+                    <div className="w-full sm:w-1/4"><label className="text-xs text-yellow-400 mb-1 block">Kapasitas Toples</label><input type="number" required value={profileForm.maxStars} onChange={e => setProfileForm({...profileForm, maxStars: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
                     <div className="w-full sm:w-1/4"><label className="text-xs text-slate-400 mb-1 block">Avatar</label><select value={profileForm.avatar} onChange={e => setProfileForm({...profileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-xl cursor-pointer"><option value="👶">👶 Bayi</option><option value="👧">👧 Anak Pr</option><option value="👦">👦 Anak Lk</option><option value="👸">👸 Putri</option><option value="🤴">🤴 Pangeran</option><option value="🦸‍♀️">🦸‍♀️ Heroine</option><option value="🦸‍♂️">🦸‍♂️ Hero</option><option value="🥷">🥷 Ninja</option><option value="🦁">🦁 Singa</option><option value="🐼">🐼 Panda</option><option value="🦊">🦊 Rubah</option><option value="🐸">🐸 Katak</option></select></div>
                     <div className="w-full sm:w-1/2"><label className="text-xs text-slate-400 mb-1 block">Tema Warna Background</label><select value={profileForm.theme} onChange={e => setProfileForm({...profileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-medium"><option value="from-pink-500 to-rose-400">🩷 Pink Ceria</option><option value="from-cyan-500 to-blue-400">🩵 Biru Samudra</option><option value="from-purple-500 to-indigo-400">💜 Ungu Galaksi</option><option value="from-emerald-400 to-teal-400">💚 Hijau Zamrud</option><option value="from-orange-400 to-red-400">❤️ Merah Api</option><option value="from-yellow-400 to-amber-500">💛 Kuning Emas</option></select></div>
                   </div>
@@ -486,7 +518,6 @@ export default function App() {
                     </select>
                   </div>
                   <div><label className="text-xs text-slate-400 mb-1 block">Nama Misi:</label><input type="text" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
-                  
                   <div className="flex gap-3">
                     <div className="flex-1">
                       <label className="text-xs text-slate-400 mb-1 block">Kategori:</label>
@@ -507,7 +538,7 @@ export default function App() {
                     )}
                     <div className="w-20">
                       <label className="text-xs text-slate-400 mb-1 block">Bintang:</label>
-                      <input type="number" min="1" required value={taskForm.reward} onChange={e => setTaskForm({...taskForm, reward: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-center font-bold text-yellow-400" />
+                      <input type="number" min="1" required value={taskForm.reward} onChange={e => setTaskForm({...taskForm, reward: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-center font-bold text-yellow-400" />
                     </div>
                   </div>
                   <button type="submit" className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-bold px-4 py-3 rounded-xl transition-all">+ Tambah Misi</button>
@@ -525,7 +556,7 @@ export default function App() {
                     </select>
                   </div>
                   <div><label className="text-xs text-slate-400 mb-1 block">Nama Hadiah:</label><input type="text" required value={rewardForm.title} onChange={e => setRewardForm({...rewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500" /></div>
-                  <div><label className="text-xs text-slate-400 mb-1 block">Harga Bintang:</label><input type="number" min="1" required value={rewardForm.cost} onChange={e => setRewardForm({...rewardForm, cost: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 font-bold text-yellow-400" /></div>
+                  <div><label className="text-xs text-slate-400 mb-1 block">Harga Bintang:</label><input type="number" min="1" required value={rewardForm.cost} onChange={e => setRewardForm({...rewardForm, cost: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 font-bold text-yellow-400" /></div>
                   <button type="submit" className="w-full bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold px-4 py-3 rounded-xl transition-all mt-auto">+ Tambah Hadiah</button>
                 </form>
               </div>
@@ -569,7 +600,7 @@ export default function App() {
                   <h3 className="text-slate-400 font-bold text-sm uppercase mb-3 border-b border-slate-700 pb-2">Daftar Misi Aktif</h3>
                   <div className="grid grid-cols-1 gap-2">
                     {tasks.map(t => {
-                      const child = profiles.find(p => p.id === t.assignedTo);
+                      const child = profiles.find(p => String(p.id) === String(t.assignedTo));
                       return editingTaskId === t.id ? (
                         <div key={t.id} className="bg-slate-800 p-4 rounded-xl border border-blue-500 shadow-xl space-y-3 animate-fade-in">
                           <div className="flex flex-col gap-3">
@@ -607,7 +638,7 @@ export default function App() {
                   <h3 className="text-slate-400 font-bold text-sm uppercase mb-3 border-b border-slate-700 pb-2">Katalog Hadiah Aktif</h3>
                   <div className="grid grid-cols-1 gap-2">
                     {rewards.map(r => {
-                      const child = profiles.find(p => p.id === r.assignedTo);
+                      const child = profiles.find(p => String(p.id) === String(r.assignedTo));
                       return editingRewardId === r.id ? (
                         <div key={r.id} className="bg-slate-800 p-4 rounded-xl border border-blue-500 shadow-xl space-y-3 animate-fade-in">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -631,7 +662,9 @@ export default function App() {
               </div>
             </div>
           </div>
-        );
+        )}
+      </div>
+    );
   };
 
   return (
