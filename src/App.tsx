@@ -46,15 +46,6 @@ interface Task {
   assignedTo: string | number;
 }
 
-interface Reward {
-  id: string;
-  title: string;
-  cost: number;
-  isClaimed: boolean;
-  isApproved: boolean;
-  assignedTo: string | number;
-}
-
 const getWeekNumber = (d: Date): string => {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
@@ -77,20 +68,14 @@ export default function App() {
 
   // --- STATE CORE APP ---
   const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
-  const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
   const [parentTab, setParentTab] = useState<'stats' | 'approval' | 'manage'>('manage'); 
   const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
 
   const [showChildForm, setShowChildForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [showRewardForm, setShowRewardForm] = useState(false);
-
-  const [childRoutineOpen, setChildRoutineOpen] = useState<{ [key: string]: boolean }>({});
-  const [childAchieveOpen, setChildAchieveOpen] = useState<{ [key: string]: boolean }>({});
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [rewards, setRewards] = useState<Reward[]>([]);
 
   // --- MONITOR STATUS LOGIN USER ---
   useEffect(() => {
@@ -109,7 +94,6 @@ export default function App() {
     if (!user) {
       setProfiles([]);
       setTasks([]);
-      setRewards([]);
       setIsPremium(false);
       return;
     }
@@ -136,20 +120,6 @@ export default function App() {
         theme: data[key].theme || 'from-pink-500 to-rose-400'
       } as Profile));
       setProfiles(pData);
-    });
-
-    const unsubRewards = onValue(ref(db, `${userBasePath}/rewards`), (snapshot) => {
-      const data = snapshot.val();
-      if (!data) { setRewards([]); return; }
-      const rData = Object.keys(data).map(key => ({
-        id: key,
-        title: data[key].title || '',
-        cost: typeof data[key].cost === 'number' ? data[key].cost : 10,
-        isClaimed: !!data[key].isClaimed,
-        isApproved: !!data[key].isApproved,
-        assignedTo: data[key].assignedTo || ''
-      } as Reward));
-      setRewards(rData);
     });
 
     const unsubTasks = onValue(ref(db, `${userBasePath}/tasks`), (snapshot) => {
@@ -201,7 +171,7 @@ export default function App() {
       }
     });
 
-    return () => { unsubPremium(); unsubProfiles(); unsubTasks(); unsubRewards(); };
+    return () => { unsubPremium(); unsubProfiles(); unsubTasks(); };
   }, [user]);
 
   const triggerCelebration = (type: 'task' | 'reward') => {
@@ -221,7 +191,6 @@ export default function App() {
     try {
       if (isRegistering) {
         const res = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        // Daftarkan email di DB untuk mempermudah pencarian owner saat aktivasi
         await update(ref(db, `users/${res.user.uid}`), { isPremium: false, email: res.user.email });
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
@@ -244,21 +213,11 @@ export default function App() {
 
   const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
   const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: 'all' });
-  const [rewardForm, setRewardForm] = useState({ title: '', cost: 10, assignedTo: 'all' });
 
   const handleCompleteTask = async (taskId: string) => {
     if (!user) return;
     triggerCelebration('task');
     await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: true });
-  };
-
-  const handleClaimReward = async (rewardId: string, childId: string, cost: number) => {
-    if (!user) return;
-    const child = profiles.find(p => p.id === childId);
-    if (!child || child.stars < cost) return alert("Bintangmu belum cukup! 💪🌟");
-    triggerCelebration('reward');
-    await update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: child.stars - cost });
-    await update(ref(db, `users/${user.uid}/rewards/${rewardId}`), { isClaimed: true });
   };
 
   const handleAddProfile = async (e: React.FormEvent) => {
@@ -286,19 +245,6 @@ export default function App() {
     setShowTaskForm(false);
   };
 
-  const handleAddReward = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rewardForm.title || profiles.length === 0 || !user) return;
-    const baseReward = { title: rewardForm.title, cost: Number(rewardForm.cost), isClaimed: false, isApproved: false };
-    if (rewardForm.assignedTo === 'all') {
-      profiles.forEach(async (p) => { await push(ref(db, `users/${user.uid}/rewards`), { ...baseReward, assignedTo: p.id }); });
-    } else {
-      await push(ref(db, `users/${user.uid}/rewards`), { ...baseReward, assignedTo: rewardForm.assignedTo });
-    }
-    setRewardForm({ ...rewardForm, title: '' });
-    setShowRewardForm(false);
-  };
-
   const handleApproveTask = async (taskId: string, childId: string | undefined, reward: number) => {
     if (!childId || !user) return;
     const child = profiles.find(p => p.id === childId);
@@ -307,14 +253,18 @@ export default function App() {
     await update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: Math.min(child.stars + reward, child.maxStars) });
   };
 
-  const handleApproveReward = async (rewardId: string) => {
-    if (!user) return;
-    await update(ref(db, `users/${user.uid}/rewards/${rewardId}`), { isApproved: true });
-  };
-
   const handleDeleteProfile = async (id: string) => {
     if (!user) return;
     if (window.confirm('Hapus akun ini?')) await remove(ref(db, `users/${user.uid}/profiles/${id}`));
+  };
+
+  const getTaskLabel = (item: any) => {
+    if (!item) return '🔄 Rutinitas';
+    if (item.type === 'Achievement') return '🏆 Pencapaian';
+    if (item.recurrence === 'daily') return '🔄 Harian';
+    if (item.recurrence === 'weekly') return '🔄 Mingguan';
+    if (item.recurrence === 'monthly') return '🔄 Bulanan';
+    return '🔄 Rutinitas';
   };
 
   // =========================================================================
@@ -324,7 +274,7 @@ export default function App() {
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">Memuat... 🌟</div>;
   }
 
-  // 🔒 HALAMAN LOGIN USER (LOGO BINTANG TUNGGAL & NAMA STARJAR BERSIH)
+  // 🔒 LOG INTERFACE (🌟 STARJAR)
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
@@ -358,9 +308,8 @@ export default function App() {
     );
   }
 
-  // 🛑 HALAMAN PROSES PREMIUM (ALUR JUALAN LYNK.ID)
+  // ⏳ LAYAR TUNGGU PASIF KHUSUS ALUR LYNK.ID (TANPA WHATSAPP)
   if (!isPremium) {
-    const waMessage = encodeURIComponent(`Halo Admin StarJar, saya sudah membeli via Lynk.id dan baru saja mendaftar.\n\nMohon bantu aktivasi akun saya.\nEmail Terdaftar: ${user.email}`);
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
         <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-md rounded-[2.5rem] border-2 border-yellow-500/20 p-8 text-center space-y-6">
@@ -370,13 +319,11 @@ export default function App() {
             Sip, akun <span className="text-white font-bold">{user.email}</span> berhasil didaftarkan!
           </p>
           <p className="text-slate-400 text-xs bg-slate-900/60 p-4 rounded-xl border border-slate-700 leading-relaxed">
-            Karena Anda sudah membayar di Lynk.id, mohon tunggu beberapa menit ya. Admin sedang memverifikasi data dan mengaktifkan toples bintang keluarga Anda (Biasanya cuma 5-10 menit).
+            Sistem kami sedang mencocokkan data pendaftaran Anda dengan data invoice pembelian dari Lynk.id. Mohon tunggu 5-10 menit ya, halaman ini akan terbuka otomatis secara realtime begitu aktivasi selesai.
           </p>
-          <div className="space-y-3">
-            <a href={`https://wa.me/628123456789?text=${waMessage}`} target="_blank" rel="noopener noreferrer" className="block w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black py-3 rounded-xl text-sm">
-              💬 Hubungi Admin (Jika Belum Aktif)
-            </a>
-            <button type="button" onClick={handleLogout} className="text-xs text-slate-500 underline block mx-auto">Keluar / Ganti Akun</button>
+          <div className="pt-2">
+            <div className="text-[11px] text-slate-500 animate-pulse font-medium">🛡️ Sinkronisasi aman dengan database Lynk.id...</div>
+            <button type="button" onClick={handleLogout} className="text-xs text-slate-500 hover:text-red-400 transition-colors underline block mx-auto mt-6">🚪 Keluar / Ganti Akun</button>
           </div>
         </div>
       </div>
@@ -390,7 +337,6 @@ export default function App() {
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {profiles.map(profile => {
-          const fillPercentage = Math.min((profile.stars / profile.maxStars) * 100, 100);
           const childRoutines = tasks.filter(t => String(t.assignedTo) === String(profile.id) && t.type === 'Daily' && !t.isApproved);
           return (
             <div key={profile.id} className="bg-slate-800/60 border border-slate-700 p-6 rounded-[2rem] flex flex-col justify-between">
@@ -411,7 +357,6 @@ export default function App() {
                   ))}
                 </div>
               </div>
-              <button onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="w-full mt-4 py-2 bg-slate-700 rounded-xl text-xs font-bold">🎁 Katalog Hadiah</button>
             </div>
           );
         })}
@@ -491,7 +436,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-12 font-sans pb-32">
       {celebration && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="text-9xl animate-bounce">{celebration === 'reward' ? '🎉🎁🎉' : '⭐✨'}</div>
+          <div className="text-9xl animate-bounce">{getTaskLabel(null) && celebration === 'reward' ? '🎉' : '⭐✨'}</div>
         </div>
       )}
       {currentRole === 'child' ? renderChildView() : renderParentView()}
