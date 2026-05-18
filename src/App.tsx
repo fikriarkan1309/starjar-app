@@ -6,7 +6,8 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  sendPasswordResetEmail 
 } from 'firebase/auth';
 
 // --- CONFIG FIREBASE STARJAR ---
@@ -24,7 +25,7 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-// --- DEFINISI INTERFACE TYPESCRIPT ---
+// --- DEFINISI INTERFACE ---
 interface Profile {
   id: string;
   name: string;
@@ -43,7 +44,7 @@ interface Task {
   reward: number;
   isDone: boolean;
   isApproved: boolean;
-  assignedTo: string | number;
+  assignedTo: string;
 }
 
 const getWeekNumber = (d: Date): string => {
@@ -55,139 +56,94 @@ const getWeekNumber = (d: Date): string => {
 };
 
 export default function App() {
-  // --- STATE AUTHENTICATION & PREMIUM STATUS ---
+  // --- AUTH & PREMIUM STATE ---
   const [user, setUser] = useState<any>(null);
   const [isPremium, setIsPremium] = useState<boolean>(false);
-  const [loadingPremium, setLoadingPremium] = useState<boolean>(true);
-  
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [loadingPremium, setLoadingPremium] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [authSuccess, setAuthSuccess] = useState('');
 
-  // --- STATE CORE APP ---
+  // --- CORE APP STATE ---
   const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
   const [parentTab, setParentTab] = useState<'stats' | 'approval' | 'manage'>('manage'); 
   const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
-
-  const [showChildForm, setShowChildForm] = useState(false);
-  const [showTaskForm, setShowTaskForm] = useState(false);
-
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  // --- MONITOR STATUS LOGIN USER ---
+  // --- FORM STATE ---
+  const [showChildForm, setShowChildForm] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
+  const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: '' });
+
+  // --- MONITOR LOGIN ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoadingAuth(false);
-      if (!currentUser) {
-        setLoadingPremium(false);
-      }
     });
     return () => unsubscribe();
   }, []);
 
-  // --- MENDENGARKAN DATABASE BERDASARKAN USER UID ---
+  // --- MONITOR DATABASE (PREMIUM & DATA) ---
   useEffect(() => {
     if (!user) {
       setProfiles([]);
       setTasks([]);
       setIsPremium(false);
+      setLoadingPremium(false);
       return;
     }
 
-    const userBasePath = `users/${user.uid}`;
     setLoadingPremium(true);
+    const userBasePath = `users/${user.uid}`;
 
+    // Listen Premium Status
     const unsubPremium = onValue(ref(db, `${userBasePath}/isPremium`), (snapshot) => {
-      const val = snapshot.val();
-      setIsPremium(!!val);
+      setIsPremium(!!snapshot.val());
       setLoadingPremium(false);
     });
 
+    // Listen Profiles
     const unsubProfiles = onValue(ref(db, `${userBasePath}/profiles`), (snapshot) => {
       const data = snapshot.val();
       if (!data) { setProfiles([]); return; }
-      const pData = Object.keys(data).map(key => ({
-        id: key,
-        name: data[key].name || '',
-        role: data[key].role || '',
-        stars: typeof data[key].stars === 'number' ? data[key].stars : 0,
-        maxStars: typeof data[key].maxStars === 'number' ? data[key].maxStars : 50,
-        avatar: data[key].avatar || '👶',
-        theme: data[key].theme || 'from-pink-500 to-rose-400'
-      } as Profile));
-      setProfiles(pData);
+      setProfiles(Object.keys(data).map(key => ({ id: key, ...data[key] })));
     });
 
+    // Listen Tasks
     const unsubTasks = onValue(ref(db, `${userBasePath}/tasks`), (snapshot) => {
       const data = snapshot.val();
       if (!data) { setTasks([]); return; }
-      const tData = Object.keys(data).map(key => ({
-        id: key,
-        title: data[key].title || '',
-        type: data[key].type || 'Daily',
-        recurrence: data[key].recurrence || 'none',
-        reward: typeof data[key].reward === 'number' ? data[key].reward : 2,
-        isDone: !!data[key].isDone,
-        isApproved: !!data[key].isApproved,
-        assignedTo: data[key].assignedTo || ''
-      } as Task));
-      
+      const tData = Object.keys(data).map(key => ({ id: key, ...data[key] }));
       setTasks(tData);
 
-      const today = new Date();
-      const todayStr = today.toDateString();
-      const currentWeek = getWeekNumber(today);
-      const currentMonth = today.getFullYear() + '-' + today.getMonth();
-
-      if (localStorage.getItem(`lastDailyReset_${user.uid}`) !== todayStr) {
+      // Reset Logics
+      const today = new Date().toDateString();
+      const currentWeek = getWeekNumber(new Date());
+      if (localStorage.getItem(`resetDaily_${user.uid}`) !== today) {
         tData.forEach(t => {
           if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) {
             update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
           }
         });
-        localStorage.setItem(`lastDailyReset_${user.uid}`, todayStr);
-      }
-
-      if (localStorage.getItem(`lastWeeklyReset_${user.uid}`) !== currentWeek) {
-        tData.forEach(t => {
-          if (t.type === 'Daily' && t.recurrence === 'weekly' && (t.isDone || t.isApproved)) {
-            update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
-          }
-        });
-        localStorage.setItem(`lastWeeklyReset_${user.uid}`, currentWeek);
-      }
-
-      if (localStorage.getItem(`lastMonthlyReset_${user.uid}`) !== currentMonth) {
-        tData.forEach(t => {
-          if (t.type === 'Daily' && t.recurrence === 'monthly' && (t.isDone || t.isApproved)) {
-            update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
-          }
-        });
-        localStorage.setItem(`lastMonthlyReset_${user.uid}`, currentMonth);
+        localStorage.setItem(`resetDaily_${user.uid}`, today);
       }
     });
 
     return () => { unsubPremium(); unsubProfiles(); unsubTasks(); };
   }, [user]);
 
-  const triggerCelebration = (type: 'task' | 'reward') => {
-    try {
-      const url = type === 'reward' 
-        ? 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3' 
-        : 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'; 
-      new Audio(url).play();
-    } catch (e) {}
-    setCelebration(type);
-    setTimeout(() => setCelebration(null), 2500);
-  };
-
+  // --- HANDLERS ---
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+    setAuthSuccess('');
     try {
       if (isRegistering) {
         const res = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
@@ -195,112 +151,109 @@ export default function App() {
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
       }
-      setAuthEmail('');
-      setAuthPassword('');
     } catch (err: any) {
-      if (err.code === 'auth/weak-password') setAuthError('Password minimal 6 karakter.');
-      else if (err.code === 'auth/email-already-in-use') setAuthError('Email sudah terdaftar.');
-      else if (err.code === 'auth/invalid-credential') setAuthError('Email atau Password salah.');
-      else setAuthError(err.message);
+      setAuthError(err.message.includes('invalid-credential') ? 'Email atau Password salah.' : err.message);
     }
   };
 
-  const handleLogout = async () => {
-    if (window.confirm('Yakin ingin keluar aplikasi?')) {
-      await signOut(auth);
+  const handleForgotPassword = async () => {
+    if (!authEmail) return setAuthError('Masukkan email kamu dulu di kotak email.');
+    setAuthError('');
+    try {
+      await sendPasswordResetEmail(auth, authEmail);
+      setAuthSuccess('Link reset password sudah dikirim ke email kamu! Cek inbox/spam ya.');
+    } catch (err: any) {
+      setAuthError('Gagal mengirim email reset: ' + err.message);
     }
   };
 
-  const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
-  const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: 'all' });
+  const handleLogout = () => window.confirm('Keluar aplikasi?') && signOut(auth);
 
-  const handleCompleteTask = async (taskId: string) => {
-    if (!user) return;
-    triggerCelebration('task');
-    await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: true });
-  };
-
-  const handleAddProfile = async (e: React.FormEvent) => {
+  const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profileForm.name || !user) return;
-    await push(ref(db, `users/${user.uid}/profiles`), { 
-      name: profileForm.name, role: profileForm.role || 'Anak', 
-      stars: 0, maxStars: Number(profileForm.maxStars), 
-      avatar: profileForm.avatar, theme: profileForm.theme 
-    });
+    if (!user || !taskForm.assignedTo) return alert('Pilih anak dulu!');
+    push(ref(db, `users/${user.uid}/tasks`), { ...taskForm, isDone: false, isApproved: false });
+    setTaskForm({ ...taskForm, title: '' });
+    setShowTaskForm(false);
+  };
+
+  const handleAddProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    push(ref(db, `users/${user.uid}/profiles`), { ...profileForm, stars: 0 });
     setProfileForm({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
     setShowChildForm(false);
   };
 
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!taskForm.title || profiles.length === 0 || !user) return;
-    const baseTask = { title: taskForm.title, type: taskForm.type, recurrence: taskForm.type === 'Daily' ? taskForm.recurrence : 'none', reward: Number(taskForm.reward), isDone: false, isApproved: false };
-    if (taskForm.assignedTo === 'all') {
-      profiles.forEach(async (p) => { await push(ref(db, `users/${user.uid}/tasks`), { ...baseTask, assignedTo: p.id }); });
-    } else {
-      await push(ref(db, `users/${user.uid}/tasks`), { ...baseTask, assignedTo: taskForm.assignedTo });
-    }
-    setTaskForm({ ...taskForm, title: '' }); 
-    setShowTaskForm(false);
-  };
-
-  const handleApproveTask = async (taskId: string, childId: string | undefined, reward: number) => {
-    if (!childId || !user) return;
-    const child = profiles.find(p => p.id === childId);
-    if (!child) return;
-    await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isApproved: true });
-    await update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: Math.min(child.stars + reward, child.maxStars) });
-  };
-
-  const handleDeleteProfile = async (id: string) => {
+  const handleCompleteTask = (taskId: string) => {
     if (!user) return;
-    if (window.confirm('Hapus akun ini?')) await remove(ref(db, `users/${user.uid}/profiles/${id}`));
+    setCelebration('task');
+    update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: true });
+    setTimeout(() => setCelebration(null), 2000);
   };
 
-  const getTaskLabel = (item: any) => {
-    if (!item) return '🔄 Rutinitas';
-    if (item.type === 'Achievement') return '🏆 Pencapaian';
-    if (item.recurrence === 'daily') return '🔄 Harian';
-    if (item.recurrence === 'weekly') return '🔄 Mingguan';
-    if (item.recurrence === 'monthly') return '🔄 Bulanan';
-    return '🔄 Rutinitas';
+  const handleApprove = (taskId: string, profileId: string, reward: number) => {
+    if (!user) return;
+    const p = profiles.find(x => x.id === profileId);
+    if (!p) return;
+    update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isApproved: true });
+    update(ref(db, `users/${user.uid}/profiles/${profileId}`), { stars: Math.min(p.stars + reward, p.maxStars) });
   };
 
-  // =========================================================================
-  // VIEW RENDERERS
-  // =========================================================================
+  // --- UI RENDERERS ---
   if (loadingAuth || loadingPremium) {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">Memuat... 🌟</div>;
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-5xl animate-spin">🌟</div>
+          <p className="text-slate-400 font-bold tracking-widest animate-pulse">MEMUAT STARJAR...</p>
+        </div>
+      </div>
+    );
   }
 
-  // 🔒 LOG INTERFACE (🌟 STARJAR)
+  // 1. LOGIN VIEW
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-md rounded-[2.5rem] border-2 border-slate-700/60 p-8 shadow-2xl space-y-6">
-          <div className="text-center space-y-2">
-            <span className="text-6xl block">🌟</span>
-            <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-400">StarJar</h1>
-            <p className="text-slate-400 text-sm">Aplikasi Toples Disiplin Anak Digital</p>
+      <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-8">
+          <div className="text-center space-y-3">
+            <span className="text-7xl block animate-bounce">🌟</span>
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-orange-500 tracking-tighter">StarJar</h1>
+            <p className="text-slate-400 text-sm font-medium">Digital Reward System for Smart Kids</p>
           </div>
-          <form onSubmit={handleAuthSubmit} className="space-y-4">
-            <div>
-              <label className="text-xs text-slate-400 font-bold mb-1 block">Email Orang Tua</label>
-              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-sm text-white" placeholder="nama@email.com" />
+
+          <form onSubmit={handleAuthSubmit} className="space-y-5">
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-black ml-4">Email Address</label>
+              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 transition-all" placeholder="bundapintar@email.com" />
             </div>
-            <div>
-              <label className="text-xs text-slate-400 font-bold mb-1 block">Password</label>
-              <input type="password" required value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-sm text-white" placeholder="••••••••" />
+            
+            <div className="space-y-1 relative">
+              <label className="text-[10px] uppercase tracking-widest text-slate-500 font-black ml-4">Password</label>
+              <div className="relative">
+                <input type={showPassword ? "text" : "password"} required value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 transition-all" placeholder="••••••••" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-yellow-400 transition-colors">
+                  {showPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
             </div>
-            {authError && <p className="text-red-400 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg border border-red-500/20">{authError}</p>}
-            <button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 font-black py-3 rounded-xl text-sm">
-              {isRegistering ? '🔥 Daftar Akun Baru' : '🔑 Masuk Aplikasi'}
+
+            {authError && <p className="text-red-400 text-xs font-bold text-center bg-red-500/10 p-3 rounded-xl border border-red-500/20">{authError}</p>}
+            {authSuccess && <p className="text-green-400 text-xs font-bold text-center bg-green-500/10 p-3 rounded-xl border border-green-500/20">{authSuccess}</p>}
+
+            <button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-yellow-500/20 transform active:scale-95 transition-all">
+              {isRegistering ? '🔥 DAFTAR SEKARANG' : '🚀 MASUK APLIKASI'}
             </button>
           </form>
-          <div className="text-center border-t border-slate-700/60 pt-4">
-            <button type="button" onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); }} className="text-xs font-bold text-cyan-400 hover:underline">
-              {isRegistering ? 'Sudah punya akun? Masuk' : 'Belum punya akun? Daftar Baru'}
+
+          <div className="space-y-3 pt-4 border-t border-slate-700/50 text-center">
+            <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-xs font-bold text-slate-400 hover:text-white transition-colors">
+              {isRegistering ? 'Sudah punya akun? Login di sini' : 'Belum punya akun? Buat Baru'}
+            </button>
+            <br />
+            <button type="button" onClick={handleForgotPassword} className="text-[10px] font-black text-yellow-500/70 hover:text-yellow-400 tracking-wider uppercase">
+              Lupa Password? Reset via Email
             </button>
           </div>
         </div>
@@ -308,141 +261,164 @@ export default function App() {
     );
   }
 
-  // ⏳ LAYAR TUNGGU PASIF KHUSUS ALUR LYNK.ID (TANPA WHATSAPP)
+  // 2. PAYWALL VIEW
   if (!isPremium) {
     return (
-      <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-md rounded-[2.5rem] border-2 border-yellow-500/20 p-8 text-center space-y-6">
-          <span className="text-7xl block animate-pulse">⏳</span>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-400">Akun Sedang Diproses!</h1>
-          <p className="text-slate-400 text-sm">
-            Sip, akun <span className="text-white font-bold">{user.email}</span> berhasil didaftarkan!
-          </p>
-          <p className="text-slate-400 text-xs bg-slate-900/60 p-4 rounded-xl border border-slate-700 leading-relaxed">
-            Sistem kami sedang mencocokkan data pendaftaran Anda dengan data invoice pembelian dari Lynk.id. Mohon tunggu 5-10 menit ya, halaman ini akan terbuka otomatis secara realtime begitu aktivasi selesai.
-          </p>
-          <div className="pt-2">
-            <div className="text-[11px] text-slate-500 animate-pulse font-medium">🛡️ Sinkronisasi aman dengan database Lynk.id...</div>
-            <button type="button" onClick={handleLogout} className="text-xs text-slate-500 hover:text-red-400 transition-colors underline block mx-auto mt-6">🚪 Keluar / Ganti Akun</button>
+      <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-slate-800/80 rounded-[3rem] border border-yellow-500/20 p-10 text-center space-y-8">
+          <div className="relative">
+            <span className="text-8xl block animate-pulse">⏳</span>
+            <div className="absolute -top-2 -right-2 bg-red-500 text-[10px] font-black px-2 py-1 rounded-full">PENDING</div>
           </div>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-black text-white">Sedang Diproses</h1>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Halo <span className="text-yellow-400 font-bold">{user.email}</span>, pembayaranmu sedang divalidasi oleh sistem. Mohon tunggu 5-10 menit ya.
+            </p>
+          </div>
+          <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 text-left space-y-3">
+             <p className="text-xs text-slate-300 flex items-center gap-2">✅ Akun berhasil didaftarkan</p>
+             <p className="text-xs text-slate-500 flex items-center gap-2">⏳ Sinkronisasi database Lynk.id...</p>
+          </div>
+          <button onClick={handleLogout} className="text-xs font-bold text-slate-500 underline uppercase tracking-widest">Logout Akun</button>
         </div>
       </div>
     );
   }
 
-  const renderChildView = () => (
-    <div className="space-y-12 max-w-6xl mx-auto">
-      <header className="text-center space-y-2">
-        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-cyan-400">Misi Bintang Hari Ini! 🚀</h1>
-      </header>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {profiles.map(profile => {
-          const childRoutines = tasks.filter(t => String(t.assignedTo) === String(profile.id) && t.type === 'Daily' && !t.isApproved);
-          return (
-            <div key={profile.id} className="bg-slate-800/60 border border-slate-700 p-6 rounded-[2rem] flex flex-col justify-between">
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-3">
-                    <span className="text-4xl">{profile.avatar}</span>
-                    <h2 className="text-2xl font-bold text-white">{profile.name}</h2>
+  // 3. MAIN APP VIEW
+  return (
+    <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 pb-32">
+      {celebration && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-md">
+          <div className="text-center animate-tada">
+            <div className="text-9xl mb-4">⭐</div>
+            <h2 className="text-4xl font-black text-yellow-400">MISI SELESAI!</h2>
+          </div>
+        </div>
+      )}
+
+      {currentRole === 'child' ? (
+        // --- VIEW ANAK ---
+        <div className="max-w-6xl mx-auto space-y-12 animate-fade-in">
+          <header className="text-center">
+            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-500">Misi Bintang 🚀</h1>
+          </header>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            {profiles.map(p => (
+              <div key={p.id} className="bg-slate-800/40 border-2 border-slate-700/50 rounded-[3rem] p-8 space-y-8 shadow-xl">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-5">
+                    <div className={`text-6xl bg-gradient-to-br ${p.theme} p-5 rounded-[2rem] shadow-lg`}>{p.avatar}</div>
+                    <div><h2 className="text-3xl font-black text-white">{p.name}</h2><p className="text-slate-500 font-bold uppercase text-xs tracking-widest">{p.role}</p></div>
                   </div>
-                  <div className="text-right font-black text-xl text-yellow-400">{profile.stars}/{profile.maxStars} ⭐</div>
+                  <div className="text-right"><p className="text-4xl font-black text-yellow-400">{p.stars}</p><p className="text-[10px] text-slate-500 font-black">/ {p.maxStars} ⭐</p></div>
                 </div>
-                <div className="space-y-2">
-                  {childRoutines.map(t => (
-                    <div key={t.id} className="flex justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-slate-700/50">
-                      <span className="text-sm font-bold text-white">{t.title}</span>
-                      <button onClick={() => handleCompleteTask(t.id)} disabled={t.isDone} className="bg-amber-400 text-slate-900 text-xs font-black px-3 py-1 rounded-lg">{t.isDone ? '⏳' : `+${t.reward} ⭐`}</button>
+                <div className="space-y-3">
+                  {tasks.filter(t => t.assignedTo === p.id && !t.isApproved).map(t => (
+                    <div key={t.id} className="flex justify-between items-center bg-slate-900/80 p-5 rounded-2xl border border-slate-700/50">
+                      <span className="font-bold text-slate-100">{t.title}</span>
+                      <button onClick={() => handleCompleteTask(t.id)} disabled={t.isDone} className={`px-5 py-2 rounded-xl font-black text-xs transition-all ${t.isDone ? 'bg-slate-800 text-slate-600' : 'bg-yellow-400 text-slate-900 shadow-lg active:scale-90'}`}>
+                        {t.isDone ? '⏳ REVIEW' : `+${t.reward} ⭐`}
+                      </button>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  const renderParentView = () => {
-    const pendingTasks = tasks.filter(t => t.isDone && !t.isApproved);
-    return (
-      <div className="max-w-4xl mx-auto space-y-6">
-        <header className="flex justify-between items-center border-b border-slate-700 pb-4">
-          <div><h1 className="text-2xl font-black text-white">Panel Orang Tua</h1></div>
-          <div className="flex gap-2 bg-slate-800 p-1 rounded-xl">
-            <button onClick={() => setParentTab('stats')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${parentTab === 'stats' ? 'bg-indigo-500' : ''}`}>📊 Stats</button>
-            <button onClick={() => setParentTab('approval')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${parentTab === 'approval' ? 'bg-slate-600' : ''}`}>🔔 Approval ({pendingTasks.length})</button>
-            <button onClick={() => setParentTab('manage')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${parentTab === 'manage' ? 'bg-blue-500' : ''}`}>⚙️ Kelola</button>
-            <button onClick={handleLogout} className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-400">🚪 Keluar</button>
-          </div>
-        </header>
-
-        {parentTab === 'stats' && (
-          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-3">
-            {profiles.map(p => (
-              <div key={p.id} className="text-sm font-bold text-white flex justify-between"><span>{p.avatar} {p.name}</span><span>{p.stars} ⭐</span></div>
             ))}
           </div>
-        )}
-
-        {parentTab === 'approval' && (
-          <div className="space-y-2">
-            {pendingTasks.map(t => {
-              const c = profiles.find(p => String(p.id) === String(t.assignedTo));
-              return (
-                <div key={t.id} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 text-xs">
-                  <div><p className="text-white font-bold">{t.title}</p><p className="text-slate-400">Anak: {c?.name}</p></div>
-                  <button onClick={() => handleApproveTask(t.id, c?.id, t.reward)} className="bg-green-500 text-slate-900 font-black px-3 py-1 rounded-lg">Setujui</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {parentTab === 'manage' && (
-          <div className="space-y-4">
-            <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-              <button type="button" onClick={() => setShowChildForm(!showChildForm)} className="w-full px-4 py-3 flex justify-between text-xs font-bold text-white bg-slate-800/50"><span>👶 Tambah Akun Anak</span></button>
-              {showChildForm && (
-                <form onSubmit={handleAddProfile} className="p-4 border-t border-slate-700 bg-slate-900/10 space-y-3 text-xs">
-                  <input type="text" placeholder="Nama Panggilan" required value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
-                  <button type="submit" className="w-full bg-blue-500 text-white font-bold py-2 rounded-lg">Simpan</button>
-                </form>
-              )}
+        </div>
+      ) : (
+        // --- VIEW PARENT ---
+        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+          <header className="flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-700/50 pb-8">
+            <div><h1 className="text-3xl font-black text-white">Panel Orang Tua 👋</h1><p className="text-slate-500 text-xs mt-1 font-medium">{user.email}</p></div>
+            <div className="flex bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700">
+              <button onClick={() => setParentTab('stats')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${parentTab === 'stats' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}>📊 STATS</button>
+              <button onClick={() => setParentTab('approval')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${parentTab === 'approval' ? 'bg-green-500 text-white shadow-lg' : 'text-slate-400'}`}>🔔 REVIEW</button>
+              <button onClick={() => setParentTab('manage')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${parentTab === 'manage' ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-400'}`}>⚙️ KELOLA</button>
+              <button onClick={handleLogout} className="px-5 py-2 text-xs font-black text-red-400 ml-2">🚪 OUT</button>
             </div>
-            <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-              <button type="button" onClick={() => setShowTaskForm(!showTaskForm)} className="w-full px-4 py-3 flex justify-between text-xs font-bold text-white bg-slate-800/50"><span>🎯 Tambah Misi Baru</span></button>
-              {showTaskForm && (
-                <form onSubmit={handleAddTask} className="p-4 border-t border-slate-700 bg-slate-900/10 space-y-3 text-xs">
-                  <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                  <input type="text" placeholder="Nama Misi" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white" />
-                  <button type="submit" className="w-full bg-slate-700 text-white font-bold py-2 rounded-lg">Simpan Misi</button>
-                </form>
-              )}
-            </div>
-            <div className="bg-slate-800/40 p-4 border border-slate-700 rounded-xl space-y-2 text-xs">
+          </header>
+
+          {parentTab === 'stats' && (
+            <div className="space-y-6">
               {profiles.map(p => (
-                <div key={p.id} className="flex justify-between items-center bg-slate-900 p-2 rounded-lg border border-slate-700"><span className="text-white font-bold">{p.avatar} {p.name}</span><button type="button" onClick={() => handleDeleteProfile(p.id)} className="text-red-400 font-bold">Hapus</button></div>
+                <div key={p.id} className="bg-slate-800/50 p-6 rounded-[2rem] border border-slate-700/50 space-y-4">
+                  <div className="flex justify-between text-sm font-black">
+                    <span className="text-white">{p.avatar} {p.name}</span>
+                    <span className="text-yellow-400">{p.stars} / {p.maxStars} ⭐</span>
+                  </div>
+                  <div className="w-full bg-slate-900 rounded-full h-4 overflow-hidden border border-slate-700">
+                    <div className={`h-full bg-gradient-to-r ${p.theme} transition-all duration-1000`} style={{ width: `${(p.stars/p.maxStars)*100}%` }}></div>
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+          )}
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-12 font-sans pb-32">
-      {celebration && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="text-9xl animate-bounce">{getTaskLabel(null) && celebration === 'reward' ? '🎉' : '⭐✨'}</div>
+          {parentTab === 'approval' && (
+            <div className="space-y-4">
+              {tasks.filter(t => t.isDone && !t.isApproved).map(t => {
+                const child = profiles.find(p => p.id === t.assignedTo);
+                return (
+                  <div key={t.id} className="flex justify-between items-center bg-slate-800/50 p-6 rounded-3xl border border-slate-700">
+                    <div><p className="text-[10px] font-black text-slate-500 uppercase">{child?.name} SELESAIKAN:</p><p className="text-lg font-bold text-white">{t.title}</p></div>
+                    <button onClick={() => handleApprove(t.id, t.assignedTo, t.reward)} className="bg-green-500 text-white font-black px-6 py-2 rounded-2xl shadow-lg active:scale-95 transition-all text-xs">SETUJUI +{t.reward}⭐</button>
+                  </div>
+                );
+              })}
+              {tasks.filter(t => t.isDone && !t.isApproved).length === 0 && <div className="text-center p-12 text-slate-500 font-bold uppercase tracking-widest text-xs border-2 border-dashed border-slate-800 rounded-[3rem]">Belum ada misi yang perlu direview</div>}
+            </div>
+          )}
+
+          {parentTab === 'manage' && (
+            <div className="space-y-6">
+              {/* Form Tambah Anak */}
+              <div className="bg-slate-800/50 rounded-[2rem] border border-slate-700 overflow-hidden">
+                <button onClick={() => setShowChildForm(!showChildForm)} className="w-full p-6 flex justify-between items-center text-sm font-black text-white"><span>👶 TAMBAH AKUN ANAK</span><span>{showChildForm ? '▲' : '▼'}</span></button>
+                {showChildForm && (
+                  <form onSubmit={handleAddProfile} className="p-8 border-t border-slate-700 space-y-4 bg-slate-900/20">
+                    <input type="text" placeholder="Nama Panggilan" required value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-3 text-sm text-white" />
+                    <button type="submit" className="w-full bg-blue-500 text-white font-black py-3 rounded-2xl text-xs">SIMPAN AKUN</button>
+                  </form>
+                )}
+              </div>
+
+              {/* Form Tambah Misi */}
+              <div className="bg-slate-800/50 rounded-[2rem] border border-slate-700 overflow-hidden">
+                <button onClick={() => setShowTaskForm(!showTaskForm)} className="w-full p-6 flex justify-between items-center text-sm font-black text-white"><span>🎯 TAMBAH MISI BARU</span><span>{showTaskForm ? '▲' : '▼'}</span></button>
+                {showTaskForm && (
+                  <form onSubmit={handleAddTask} className="p-8 border-t border-slate-700 space-y-4 bg-slate-900/20">
+                    <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-3 text-sm text-white">
+                      <option value="">Pilih Anak...</option>
+                      {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <input type="text" placeholder="Nama Misi (Contoh: Sikat Gigi)" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-3 text-sm text-white" />
+                    <button type="submit" className="w-full bg-slate-700 text-white font-black py-3 rounded-2xl text-xs">TAMBAH MISI</button>
+                  </form>
+                )}
+              </div>
+
+              {/* List Hapus */}
+              <div className="bg-slate-900/40 p-6 rounded-[2rem] border border-slate-700 space-y-3">
+                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 mb-4">Manajemen Data</h3>
+                {profiles.map(p => (
+                  <div key={p.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-2xl border border-slate-700/50">
+                    <span className="text-xs font-bold">{p.avatar} {p.name}</span>
+                    <button onClick={() => handleDeleteProfile(p.id)} className="text-[10px] font-black text-red-500 bg-red-500/10 px-3 py-1 rounded-lg">HAPUS</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
-      {currentRole === 'child' ? renderChildView() : renderParentView()}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-1">
-        <button type="button" onClick={() => setCurrentRole('child')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'child' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}>👦👧 Mode Anak</button>
-        <button type="button" onClick={() => setCurrentRole('parent')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'parent' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-lg' : 'text-slate-400'}`}>👨👩 Mode Orang Tua</button>
+
+      {/* FOOTER SWITCHER */}
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur-xl p-2 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2">
+        <button onClick={() => setCurrentRole('child')} className={`px-8 py-3 rounded-full text-xs font-black transition-all ${currentRole === 'child' ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>MODE ANAK</button>
+        <button onClick={() => setCurrentRole('parent')} className={`px-8 py-3 rounded-full text-xs font-black transition-all ${currentRole === 'parent' ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-950 shadow-lg' : 'text-slate-400 hover:text-white'}`}>MODE ORANG TUA</button>
       </div>
     </div>
   );
