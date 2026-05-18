@@ -596,7 +596,6 @@ export default function App() {
 
                   {/* Accordion Misi Pencapaian */}
                   <div className="bg-slate-900/40 border border-slate-700 rounded-2xl overflow-hidden">
-                    <button type="button" onClick={() => toggleChildChoose(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left" style={{display: 'none'}}> {/* Backup layout block */} </button>
                     <button type="button" onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-slate-200">🏆 Misi Pencapaian</span>
