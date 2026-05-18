@@ -18,7 +18,7 @@ const firebaseConfig = {
   storageBucket: "starjar-f3461.firebasestorage.app",
   messagingSenderId: "834288744757",
   appId: "1:834288744757:web:8babfcb387284efc54347c",
-  databaseURL: "https://starjar-f3461-default-rtdb.asia-southeast1.firebasedatabase.app/" // Menyesuaikan URL RTDB bawaan Google
+  databaseURL: "https://starjar-f3461-default-rtdb.asia-southeast1.firebasedatabase.app/" 
 };
 
 const app = initializeApp(firebaseConfig);
@@ -44,7 +44,7 @@ interface Task {
   reward: number;
   isDone: boolean;
   isApproved: boolean;
-  assignedTo: string | number;
+  assignedTo: string;
 }
 
 interface Reward {
@@ -53,7 +53,7 @@ interface Reward {
   cost: number;
   isClaimed: boolean;
   isApproved: boolean;
-  assignedTo: string | number;
+  assignedTo: string;
 }
 
 const getWeekNumber = (d: Date): string => {
@@ -65,6 +65,17 @@ const getWeekNumber = (d: Date): string => {
 };
 
 export default function App() {
+  // --- PILIHAN AVATAR & TEMA WARNA ASLI JANGAN SAMPAI HILANG ---
+  const avatarOptions = ['👶', '👧', '👦', '👸', '🤴', '🦸‍♀️', '🦸‍♂️', '🥷', '🦁', '🐼', '🦊', '🐸'];
+  const themeOptions = [
+    { value: 'from-pink-500 to-rose-400', label: '🩷 Pink Ceria' },
+    { value: 'from-cyan-500 to-blue-400', label: '🩵 Biru Samudra' },
+    { value: 'from-purple-500 to-indigo-400', label: '💜 Ungu Galaksi' },
+    { value: 'from-emerald-400 to-teal-400', label: '💚 Hijau Zamrud' },
+    { value: 'from-orange-400 to-red-400', label: '❤️ Merah Jingga' },
+    { value: 'from-yellow-400 to-amber-500', label: '💛 Kuning Emas' }
+  ];
+
   // --- STATE AUTHENTICATION, EYE TOGGLE, & STATUS PREMIUM LYNK.ID ---
   const [user, setUser] = useState<any>(null);
   const [isPremium, setIsPremium] = useState<boolean>(false);
@@ -113,7 +124,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
 
-  // --- STATE EDITING SYSTEM (INLINE EDIT) UTANPA DIKUNCI ---
+  // --- STATE EDITING SYSTEM (INLINE EDIT) ---
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editProfileForm, setEditProfileForm] = useState<Partial<Profile>>({});
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -121,7 +132,7 @@ export default function App() {
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [editRewardForm, setEditRewardForm] = useState<Partial<Reward>>({});
 
-  // --- MONITOR SAKTI SESSIN LOGIN USER ---
+  // --- MONITOR SESSI LOGIN USER ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -337,8 +348,8 @@ export default function App() {
     if (!user) return;
     if (window.confirm('Yakin menghapus akun ini beserta Misi dan Hadiahnya?')) {
       await remove(ref(db, `users/${user.uid}/profiles/${id}`));
-      tasks.filter(t => t.assignedTo === id).forEach(t => remove(ref(db, `users/${user.uid}/tasks/${t.id}`)));
-      rewards.filter(r => r.assignedTo === id).forEach(r => remove(ref(db, `users/${user.uid}/rewards/${r.id}`)));
+      tasks.filter(t => String(t.assignedTo) === String(id)).forEach(t => remove(ref(db, `users/${user.uid}/tasks/${t.id}`)));
+      rewards.filter(r => String(r.assignedTo) === String(id)).forEach(r => remove(ref(db, `users/${user.uid}/rewards/${r.id}`)));
     }
   };
 
@@ -374,6 +385,37 @@ export default function App() {
   
   const handleDeleteReward = async (id: string) => { user && await remove(ref(db, `users/${user.uid}/rewards/${id}`)); };
 
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setAuthError(''); setAuthSuccess('');
+    try {
+      if (isRegistering) {
+        const res = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        await update(ref(db, `users/${res.user.uid}`), { isPremium: false, email: res.user.email });
+      } else {
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      }
+      setAuthEmail(''); setAuthPassword('');
+    } catch (err: any) {
+      if (err.code === 'auth/weak-password') setAuthError('Password minimal 6 karakter, Bro.');
+      else if (err.code === 'auth/email-already-in-use') setAuthError('Email ini sudah kedaftar.');
+      else if (err.code === 'auth/invalid-credential') setAuthError('Email atau Password salah.');
+      else setAuthError(err.message);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!authEmail) return setAuthError('Ketik dulu email kamu di atas, baru klik tombol ini, Bro!');
+    setAuthError(''); setAuthSuccess('');
+    try {
+      await sendPasswordResetEmail(auth, authEmail);
+      setAuthSuccess('Tautan ganti password sudah dikirim ke email kamu! Cek inbox/spam ya.');
+    } catch (err: any) {
+      setAuthError('Gagal kirim email reset: ' + err.message);
+    }
+  };
+
+  const handleLogout = () => window.confirm('Keluar dari StarJar?') && signOut(auth);
+
   const getTaskLabel = (item: any) => {
     if (!item) return '🔄 Rutinitas';
     if (item.type === 'Achievement') return '🏆 Pencapaian';
@@ -394,17 +436,7 @@ export default function App() {
   // =========================================================================
   // VIEW RENDERERS UTAMA (SINKRON 100% SESUAI FILE VALID DAN VIDEO)
   // =========================================================================
-  if (loadingAuth || loadingPremium) {
-    return (
-      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
-         <div className="text-center space-y-3">
-           <div className="text-6xl animate-spin">🌟</div>
-           <p className="animate-pulse">MEMUAT STARJAR...</p>
-         </div>
-      </div>
-    );
-  }
-
+  
   // 🔒 A. TAMPILAN HALAMAN LOGIN AWAL MINIMALIS 🌟
   if (!user) {
     return (
@@ -715,8 +747,8 @@ export default function App() {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-4">
                       <div className="w-full sm:w-1/4"><label className="text-xs text-slate-400 mb-1 block">Target Maks</label><input type="number" required value={profileForm.maxStars} onChange={e => setProfileForm({...profileForm, maxStars: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-center font-bold text-yellow-400" /></div>
-                      <div className="w-full sm:w-1/4"><label className="text-xs text-slate-400 mb-1 block">Avatar</label><select value={profileForm.avatar} onChange={e => setProfileForm({...profileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-xl cursor-pointer"><option value="👶">👶 Bayi</option><option value="👧">👧 Anak Perempuan</option><option value="👦">👦 Anak Laki-laki</option><option value="👸">👸 Putri</option><option value="🤴">🤴 Pangeran</option><option value="🦸‍♀️">🦸‍♀️ Heroine</option><option value="🦸‍♂️">🦸‍♂️ Hero</option><option value="🥷">🥷 Ninja</option><option value="🦁">🦁 Singa</option><option value="🐼">🐼 Panda</option><option value="🦊">🦊 Rubah</option><option value="🐸">🐸 Katak</option></select></div>
-                      <div className="w-full sm:w-1/2"><label className="text-xs text-slate-400 mb-1 block">Tema Warna Background</label><select value={profileForm.theme} onChange={e => setProfileForm({...profileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-medium"><option value="from-pink-500 to-rose-400">🩷 Pink Ceria</option><option value="from-cyan-500 to-blue-400">🩵 Biru Samudra</option><option value="from-purple-500 to-indigo-400">💜 Ungu Galaksi</option><option value="from-emerald-400 to-teal-400">💚 Hijau Zamrud</option><option value="from-orange-400 to-red-400">❤️ Merah Jingga</option><option value="from-yellow-400 to-amber-500">💛 Kuning Emas</option></select></div>
+                      <div className="w-full sm:w-1/4"><label className="text-xs text-slate-400 mb-1 block">Avatar</label><select value={profileForm.avatar} onChange={e => setProfileForm({...profileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-xl cursor-pointer">{avatarOptions.map(av => <option key={av} value={av}>{av}</option>)}</select></div>
+                      <div className="w-full sm:w-1/2"><label className="text-xs text-slate-400 mb-1 block">Tema Warna Background</label><select value={profileForm.theme} onChange={e => setProfileForm({...profileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-medium">{themeOptions.map(th => <option key={th.value} value={th.value}>{th.label}</option>)}</select></div>
                     </div>
                     <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-3 rounded-xl transition-all shadow-md">+ Tambah Profil</button>
                   </form>
@@ -793,8 +825,8 @@ export default function App() {
                         </div>
                         <div className="flex flex-row gap-2">
                           <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Target</label><input type="number" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-yellow-400 font-bold text-center" value={editProfileForm.maxStars || 50} onChange={e => setEditProfileForm({...editProfileForm, maxStars: Number(e.target.value)})} /></div>
-                          <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Avatar</label><select value={editProfileForm.avatar || '👶'} onChange={e => setEditProfileForm({...editProfileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="👶">👶</option><option value="👧">👧</option><option value="👦">👦</option><option value="👸">👸</option><option value="🤴">🤴</option><option value="🦸‍♀️">🦸‍♀️</option><option value="🦸‍♂️">🦸‍♂️</option><option value="🥷">🥷</option><option value="🦁">🦁</option><option value="🐼">🐼</option><option value="🦊">🦊</option><option value="🐸">🐸</option></select></div>
-                          <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Tema</label><select value={editProfileForm.theme || 'from-pink-500 to-rose-400'} onChange={e => setEditProfileForm({...editProfileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm"><option value="from-pink-500 to-rose-400">🩷 Pink</option><option value="from-cyan-500 to-blue-400">🩵 Biru</option><option value="from-purple-500 to-indigo-400">💜 Ungu</option><option value="from-emerald-400 to-teal-400">💚 Hijau</option><option value="from-orange-400 to-red-400">❤️ Merah</option><option value="from-yellow-400 to-amber-500">💛 Kuning</option></select></div>
+                          <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Avatar</label><select value={editProfileForm.avatar || '👶'} onChange={e => setEditProfileForm({...editProfileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm">{avatarOptions.map(av => <option key={av} value={av}>{av}</option>)}</select></div>
+                          <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Tema</label><select value={editProfileForm.theme || 'from-pink-500 to-rose-400'} onChange={e => setEditProfileForm({...editProfileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm">{themeOptions.map(th => <option key={th.value} value={th.value}>{th.label}</option>)}</select></div>
                         </div>
                         <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50"><button type="button" onClick={() => setEditingProfileId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditProfile} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs shadow-md">Simpan</button></div>
                       </div>
@@ -812,7 +844,7 @@ export default function App() {
               <div className="space-y-3">
                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest">● Daftar Semua Misi</p>
                 {tasks.map(t => {
-                  const targetedChild = profiles.find(p => p.id === t.assignedTo);
+                  const targetedChild = profiles.find(p => String(p.id) === String(t.assignedTo));
                   return (
                     <div key={t.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-700">
                       {editingTaskId === t.id ? (
@@ -840,7 +872,7 @@ export default function App() {
               <div className="space-y-3">
                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest">● Daftar Semua Hadiah</p>
                 {rewards.map(r => {
-                  const targetedChild = profiles.find(p => p.id === r.assignedTo);
+                  const targetedChild = profiles.find(p => String(p.id) === String(r.assignedTo));
                   return (
                     <div key={r.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-700">
                       {editingRewardId === r.id ? (
