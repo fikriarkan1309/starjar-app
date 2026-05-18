@@ -60,6 +60,11 @@ export default function App() {
   const [parentTab, setParentTab] = useState<'stats' | 'approval' | 'manage'>('manage'); 
   const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
 
+  // --- STATE UNTUK SHOW/HIDE FORM (ACCORDION) ---
+  const [showChildForm, setShowChildForm] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [showRewardForm, setShowRewardForm] = useState(false);
+
   const playSound = (type: 'success' | 'tada') => {
     try {
       const url = type === 'success' 
@@ -81,7 +86,6 @@ export default function App() {
   const [rewards, setRewards] = useState<Reward[]>([]);
 
   useEffect(() => {
-    // Parsing data Firebase dengan Type-Safe yang disukai Vercel
     const unsubProfiles = onSnapshot(collection(db, 'profiles'), (snapshot) => {
       const pData = snapshot.docs.map(docSnap => {
         const data = docSnap.data();
@@ -130,7 +134,6 @@ export default function App() {
       
       setTasks(tData);
 
-      // Logika Reset Waktu
       const today = new Date();
       const todayStr = today.toDateString();
       const currentWeek = getWeekNumber(today);
@@ -215,6 +218,7 @@ export default function App() {
       avatar: profileForm.avatar, theme: profileForm.theme 
     });
     setProfileForm({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
+    setShowChildForm(false); // Otomatis tutup setelah tambah data
   };
 
   const handleAddTask = async (e: React.FormEvent) => {
@@ -235,6 +239,7 @@ export default function App() {
       await addDoc(collection(db, 'tasks'), { ...baseTask, assignedTo: taskForm.assignedTo });
     }
     setTaskForm({ ...taskForm, title: '' }); 
+    setShowTaskForm(false); // Otomatis tutup setelah tambah data
   };
 
   const handleAddReward = async (e: React.FormEvent) => {
@@ -254,6 +259,7 @@ export default function App() {
       await addDoc(collection(db, 'rewards'), { ...baseReward, assignedTo: rewardForm.assignedTo });
     }
     setRewardForm({ ...rewardForm, title: '' });
+    setShowRewardForm(false); // Otomatis tutup setelah tambah data
   };
 
   const startEditProfile = (profile: Profile) => { setEditingProfileId(profile.id); setEditProfileForm({ ...profile }); };
@@ -489,79 +495,118 @@ export default function App() {
         )}
 
         {parentTab === 'manage' && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-xl md:col-span-2">
-                <h2 className="text-lg font-bold text-white mb-4">👶 Tambah Akun Anak</h2>
-                <form onSubmit={handleAddProfile} className="space-y-4">
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Nama Panggilan</label><input type="text" required value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
-                    <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Status</label><input type="text" value={profileForm.role} onChange={e => setProfileForm({...profileForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-col gap-4">
+              
+              {/* --- ACCORDION 1: TAMBAH AKUN ANAK --- */}
+              <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
+                <button 
+                  onClick={() => setShowChildForm(!showChildForm)}
+                  className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left"
+                >
+                  <span className="text-lg font-bold text-white flex items-center gap-2">👶 Tambah Akun Anak</span>
+                  <span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showChildForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                </button>
+                
+                {showChildForm && (
+                  <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 animate-fade-in">
+                    <form onSubmit={handleAddProfile} className="space-y-4">
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Nama Panggilan</label><input type="text" required value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
+                        <div className="flex-1"><label className="text-xs text-slate-400 mb-1 block">Status</label><input type="text" value={profileForm.role} onChange={e => setProfileForm({...profileForm, role: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="w-full sm:w-1/4"><label className="text-xs text-yellow-400 mb-1 block">Kapasitas Toples</label><input type="number" required value={profileForm.maxStars} onChange={e => setProfileForm({...profileForm, maxStars: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
+                        <div className="w-full sm:w-1/4"><label className="text-xs text-slate-400 mb-1 block">Avatar</label><select value={profileForm.avatar} onChange={e => setProfileForm({...profileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-xl cursor-pointer"><option value="👶">👶 Bayi</option><option value="👧">👧 Anak Pr</option><option value="👦">👦 Anak Lk</option><option value="👸">👸 Putri</option><option value="🤴">🤴 Pangeran</option><option value="🦸‍♀️">🦸‍♀️ Heroine</option><option value="🦸‍♂️">🦸‍♂️ Hero</option><option value="🥷">🥷 Ninja</option><option value="🦁">🦁 Singa</option><option value="🐼">🐼 Panda</option><option value="🦊">🦊 Rubah</option><option value="🐸">🐸 Katak</option></select></div>
+                        <div className="w-full sm:w-1/2"><label className="text-xs text-slate-400 mb-1 block">Tema Warna Background</label><select value={profileForm.theme} onChange={e => setProfileForm({...profileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-medium"><option value="from-pink-500 to-rose-400">🩷 Pink Ceria</option><option value="from-cyan-500 to-blue-400">🩵 Biru Samudra</option><option value="from-purple-500 to-indigo-400">💜 Ungu Galaksi</option><option value="from-emerald-400 to-teal-400">💚 Hijau Zamrud</option><option value="from-orange-400 to-red-400">❤️ Merah Api</option><option value="from-yellow-400 to-amber-500">💛 Kuning Emas</option></select></div>
+                      </div>
+                      <button type="submit" className="w-full bg-blue-500 hover:bg-blue-400 text-white font-bold px-6 py-3 rounded-xl transition-all mt-2">+ Buat Akun Anak</button>
+                    </form>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="w-full sm:w-1/4"><label className="text-xs text-yellow-400 mb-1 block">Kapasitas Toples</label><input type="number" required value={profileForm.maxStars} onChange={e => setProfileForm({...profileForm, maxStars: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
-                    <div className="w-full sm:w-1/4"><label className="text-xs text-slate-400 mb-1 block">Avatar</label><select value={profileForm.avatar} onChange={e => setProfileForm({...profileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-xl cursor-pointer"><option value="👶">👶 Bayi</option><option value="👧">👧 Anak Pr</option><option value="👦">👦 Anak Lk</option><option value="👸">👸 Putri</option><option value="🤴">🤴 Pangeran</option><option value="🦸‍♀️">🦸‍♀️ Heroine</option><option value="🦸‍♂️">🦸‍♂️ Hero</option><option value="🥷">🥷 Ninja</option><option value="🦁">🦁 Singa</option><option value="🐼">🐼 Panda</option><option value="🦊">🦊 Rubah</option><option value="🐸">🐸 Katak</option></select></div>
-                    <div className="w-full sm:w-1/2"><label className="text-xs text-slate-400 mb-1 block">Tema Warna Background</label><select value={profileForm.theme} onChange={e => setProfileForm({...profileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-medium"><option value="from-pink-500 to-rose-400">🩷 Pink Ceria</option><option value="from-cyan-500 to-blue-400">🩵 Biru Samudra</option><option value="from-purple-500 to-indigo-400">💜 Ungu Galaksi</option><option value="from-emerald-400 to-teal-400">💚 Hijau Zamrud</option><option value="from-orange-400 to-red-400">❤️ Merah Api</option><option value="from-yellow-400 to-amber-500">💛 Kuning Emas</option></select></div>
-                  </div>
-                  <button type="submit" className="w-full bg-blue-500 hover:bg-blue-400 text-white font-bold px-6 py-3 rounded-xl transition-all mt-2">+ Buat Akun Anak</button>
-                </form>
+                )}
               </div>
 
-              <div className="bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-xl">
-                <h2 className="text-lg font-bold text-white mb-4">🎯 Tambah Misi</h2>
-                <form onSubmit={handleAddTask} className="space-y-4">
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Tugaskan ke:</label>
-                    <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-bold">
-                      <option value="all">🌟 Semua Anak</option>
-                      {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                  <div><label className="text-xs text-slate-400 mb-1 block">Nama Misi:</label><input type="text" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <label className="text-xs text-slate-400 mb-1 block">Kategori:</label>
-                      <select value={taskForm.type} onChange={e => setTaskForm({...taskForm, type: e.target.value, recurrence: e.target.value === 'Daily' ? 'daily' : 'none'})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer">
-                        <option value="Daily">Rutinitas</option>
-                        <option value="Achievement">Pencapaian</option>
-                      </select>
-                    </div>
-                    {taskForm.type === 'Daily' && (
-                      <div className="flex-1">
-                        <label className="text-xs text-slate-400 mb-1 block">Ulangi:</label>
-                        <select value={taskForm.recurrence} onChange={e => setTaskForm({...taskForm, recurrence: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer">
-                          <option value="daily">Tiap Hari</option>
-                          <option value="weekly">Tiap Minggu</option>
-                          <option value="monthly">Tiap Bulan</option>
+              {/* --- ACCORDION 2: TAMBAH MISI --- */}
+              <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
+                <button 
+                  onClick={() => setShowTaskForm(!showTaskForm)}
+                  className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left"
+                >
+                  <span className="text-lg font-bold text-white flex items-center gap-2">🎯 Tambah Misi Baru</span>
+                  <span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showTaskForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                </button>
+
+                {showTaskForm && (
+                  <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 animate-fade-in">
+                    <form onSubmit={handleAddTask} className="space-y-4">
+                      <div>
+                        <label className="text-xs text-slate-400 mb-1 block">Tugaskan ke:</label>
+                        <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-bold">
+                          <option value="all">🌟 Semua Anak</option>
+                          {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </div>
-                    )}
-                    <div className="w-20">
-                      <label className="text-xs text-slate-400 mb-1 block">Bintang:</label>
-                      <input type="number" min="1" required value={taskForm.reward} onChange={e => setTaskForm({...taskForm, reward: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-center font-bold text-yellow-400" />
-                    </div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Nama Misi:</label><input type="text" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500" /></div>
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="text-xs text-slate-400 mb-1 block">Kategori:</label>
+                          <select value={taskForm.type} onChange={e => setTaskForm({...taskForm, type: e.target.value, recurrence: e.target.value === 'Daily' ? 'daily' : 'none'})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer">
+                            <option value="Daily">Rutinitas</option>
+                            <option value="Achievement">Pencapaian</option>
+                          </select>
+                        </div>
+                        {taskForm.type === 'Daily' && (
+                          <div className="flex-1">
+                            <label className="text-xs text-slate-400 mb-1 block">Ulangi:</label>
+                            <select value={taskForm.recurrence} onChange={e => setTaskForm({...taskForm, recurrence: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer">
+                              <option value="daily">Tiap Hari</option>
+                              <option value="weekly">Tiap Minggu</option>
+                              <option value="monthly">Tiap Bulan</option>
+                            </select>
+                          </div>
+                        )}
+                        <div className="w-20">
+                          <label className="text-xs text-slate-400 mb-1 block">Bintang:</label>
+                          <input type="number" min="1" required value={taskForm.reward} onChange={e => setTaskForm({...taskForm, reward: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-center font-bold text-yellow-400" />
+                        </div>
+                      </div>
+                      <button type="submit" className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-bold px-4 py-3 rounded-xl transition-all">+ Tambah Misi</button>
+                    </form>
                   </div>
-                  <button type="submit" className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-bold px-4 py-3 rounded-xl transition-all">+ Tambah Misi</button>
-                </form>
+                )}
               </div>
 
-              <div className="bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-xl">
-                <h2 className="text-lg font-bold text-white mb-4">🎁 Tambah Hadiah</h2>
-                <form onSubmit={handleAddReward} className="space-y-4">
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Untuk Anak:</label>
-                    <select value={rewardForm.assignedTo} onChange={e => setRewardForm({...rewardForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 cursor-pointer font-bold">
-                      <option value="all">🌟 Semua Anak</option>
-                      {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+              {/* --- ACCORDION 3: TAMBAH HADIAH --- */}
+              <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
+                <button 
+                  onClick={() => setShowRewardForm(!showRewardForm)}
+                  className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left"
+                >
+                  <span className="text-lg font-bold text-white flex items-center gap-2">🎁 Tambah Hadiah Baru</span>
+                  <span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showRewardForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                </button>
+
+                {showRewardForm && (
+                  <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 animate-fade-in">
+                    <form onSubmit={handleAddReward} className="space-y-4">
+                      <div>
+                        <label className="text-xs text-slate-400 mb-1 block">Untuk Anak:</label>
+                        <select value={rewardForm.assignedTo} onChange={e => setRewardForm({...rewardForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 cursor-pointer font-bold">
+                          <option value="all">🌟 Semua Anak</option>
+                          {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Nama Hadiah:</label><input type="text" required value={rewardForm.title} onChange={e => setRewardForm({...rewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500" /></div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Harga Bintang:</label><input type="number" min="1" required value={rewardForm.cost} onChange={e => setRewardForm({...rewardForm, cost: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 font-bold text-yellow-400" /></div>
+                      <button type="submit" className="w-full bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold px-4 py-3 rounded-xl transition-all mt-auto">+ Tambah Hadiah</button>
+                    </form>
                   </div>
-                  <div><label className="text-xs text-slate-400 mb-1 block">Nama Hadiah:</label><input type="text" required value={rewardForm.title} onChange={e => setRewardForm({...rewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500" /></div>
-                  <div><label className="text-xs text-slate-400 mb-1 block">Harga Bintang:</label><input type="number" min="1" required value={rewardForm.cost} onChange={e => setRewardForm({...rewardForm, cost: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 font-bold text-yellow-400" /></div>
-                  <button type="submit" className="w-full bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold px-4 py-3 rounded-xl transition-all mt-auto">+ Tambah Hadiah</button>
-                </form>
+                )}
               </div>
+
             </div>
 
+            {/* --- LIST DATA DI BAWAH ACCORDION --- */}
             <div className="bg-slate-800/50 rounded-3xl p-6 md:p-8 border border-slate-700 mt-8">
               <h2 className="text-xl font-bold text-white mb-6">🗂️ Daftar Data Saat Ini</h2>
               <div className="space-y-8">
@@ -662,9 +707,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        )}
-      </div>
-    );
+        );
   };
 
   return (
