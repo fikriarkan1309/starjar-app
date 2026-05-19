@@ -551,7 +551,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODIFIKASI LAYOUT: SCROLL KE SAMPING PADA IPAD & PC, VERTikal di HP */}
+      {/* HORIZONTAL SCROLL LAYOUT UNTUK IPAD & PC */}
       <div className="flex flex-col md:flex-row md:overflow-x-auto gap-8 items-start md:pb-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent w-full justify-center md:justify-start">
         {profiles.map(profile => {
           const fillPercentage = Math.min((profile.stars / profile.maxStars) * 100, 100);
@@ -564,117 +564,121 @@ export default function App() {
           const isAchieveOpen = !!childAchieveOpen[profile.id];
 
           return (
-            // BALIKIN UI GAMBAR 3: BACKGROUND GRADASI PENUH MENGIKUTI TEMA PROFIL
-            <div key={profile.id} className={`w-full md:w-[450px] md:flex-shrink-0 bg-gradient-to-br ${profile.theme} rounded-[3rem] p-6 md:p-8 shadow-2xl flex flex-col gap-6 relative overflow-hidden text-slate-900 border border-white/10`}>
+            // FIX GAMBAR 3: KOTAK IPAD DIPERRAMPING JADI 'md:w-[350px]' & BACK KOTAK GELAP SEPERTI GAMBAR 2
+            <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
               
-              {/* HEADER KARTU ANAK DENGAN TEKS BAYANGAN PUTIH AGAR JELAS */}
+              {/* HEADER AVATAR KARTU ANAK */}
               <div className="flex flex-col items-center justify-center text-center space-y-3">
+                {/* FIX GAMBAR 2: GRADASI WARNA HANYA MEMBUNGKUS SEKITAR AVATAR SAJA */}
+                <div className={`p-4 rounded-3xl bg-gradient-to-br ${profile.theme} shadow-lg flex items-center justify-center min-w-[90px] min-h-[90px]`}>
+                  <span className="text-5xl block filter drop-shadow">{profile.avatar}</span>
+                </div>
+                
                 <div>
-                  <span className="text-6xl md:text-7xl block filter drop-shadow-md">{profile.avatar}</span>
-                  <h2 className="text-2xl font-black mt-2 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">{profile.name}</h2>
-                  <span className="text-[10px] bg-black/30 text-white font-black px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur-sm">{profile.role}</span>
+                  <h2 className="text-2xl font-black text-white">{profile.name}</h2>
+                  <span className="text-[10px] bg-slate-700/80 text-slate-300 font-black px-3 py-1 rounded-full uppercase tracking-wider mt-1 inline-block">{profile.role}</span>
                 </div>
 
                 {/* VISUAL TOPLES KACA DIGITAL */}
-                <div className="relative w-44 h-60 bg-white/15 rounded-[2.5rem] border-4 border-white/30 shadow-[inset_0_4px_20px_rgba(255,255,255,0.2)] flex flex-col justify-end p-4 overflow-hidden backdrop-blur-xs">
+                <div className="relative w-40 h-56 bg-white/10 rounded-[2.5rem] border-4 border-white/20 shadow-[inset_0_4px_20px_rgba(255,255,255,0.1)] flex flex-col justify-end p-4 overflow-hidden">
                   <div className="absolute top-0 left-0 right-0 h-5 bg-gradient-to-b from-black/20 to-transparent z-10 flex items-center justify-center">
-                    <div className="w-16 h-2.5 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div>
+                    <div className="w-14 h-2 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div>
                   </div>
                   
-                  {/* PENGISIAN CAIRAN KUNING EMAS BINTANG TETAP KUNING SESUAI GAMBAR 3 */}
-                  <div className="w-full rounded-b-[1.8rem] bg-gradient-to-t from-yellow-400 to-amber-500 transition-all duration-1000 relative shadow-[inset_0_2px_10px_rgba(255,255,255,0.4)]" style={{ height: `${fillPercentage}%` }}>
+                  {/* CAIRAN TETAP WARNA KUNING EMAS BINTANG (KUNCI PATEN) */}
+                  <div className="w-full rounded-b-[1.8rem] bg-gradient-to-t from-yellow-400 to-amber-500 transition-all duration-1000 relative shadow-[inset_0_2px_10px_rgba(255,255,255,0.3)]" style={{ height: `${fillPercentage}%` }}>
                     {fillPercentage > 5 && (
-                      <div className="absolute inset-0 flex flex-wrap gap-1.5 p-3 items-end justify-center overflow-hidden animate-pulse">
-                        {Array.from({ length: Math.min(profile.stars, 12) }).map((_, i) => (
-                          <span key={i} className="text-xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transform rotate-12">⭐</span>
+                      <div className="absolute inset-0 flex flex-wrap gap-1.5 p-2 items-end justify-center overflow-hidden animate-pulse">
+                        {Array.from({ length: Math.min(profile.stars, 10) }).map((_, i) => (
+                          <span key={i} className="text-lg filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transform rotate-12">⭐</span>
                         ))}
                       </div>
                     )}
                   </div>
                   <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
                     <span className="text-4xl font-black text-white filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.7)]">{profile.stars}</span>
-                    <span className="text-[9px] font-black text-white/90 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] uppercase tracking-widest mt-0.5">/ {profile.maxStars} Bintang</span>
+                    <span className="text-[9px] font-black text-white/90 filter drop-shadow uppercase tracking-widest mt-0.5">/ {profile.maxStars} Bintang</span>
                   </div>
                 </div>
               </div>
 
-              {/* LIST MISI & HADIAH MEMANJANG KE BAWAH DI DALAM KARTU */}
+              {/* LIST EXPANDABLE DATA MISI DAN REWARD MEMANJANG KE BAWAH */}
               <div className="w-full flex flex-col gap-4">
                 
                 {/* AKORDION RUTINITAS */}
-                <div className="bg-black/15 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xs">
-                  <button onClick={() => toggleChildRoutine(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-black/10 transition-all text-left">
+                <div className="bg-slate-900/50 border border-slate-700/60 rounded-2xl overflow-hidden">
+                  <button onClick={() => toggleChildRoutine(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-white drop-shadow-sm">🔄 Rutinitas Harian</span>
-                      <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-black">{childRoutines.length}</span>
+                      <span className="text-xs font-black text-slate-200">🔄 Rutinitas Harian</span>
+                      <span className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childRoutines.length}</span>
                     </div>
-                    <span className={`text-white text-xs font-black transform transition-transform duration-300 ${isRoutineOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                    <span className={`text-slate-400 text-xs font-black transform transition-transform duration-300 ${isRoutineOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
                   </button>
                   {isRoutineOpen && (
-                    <div className="p-2.5 border-t border-white/10 space-y-2 bg-black/5 animate-fade-in">
+                    <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
                       {childRoutines.map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-3 rounded-xl border border-white/20 bg-white/90 text-slate-900 shadow-sm gap-2">
+                        <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-white text-slate-900 shadow-sm gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black truncate">{item.title}</p>
-                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200 mt-1 inline-block">{getTaskLabel(item)}</span>
+                            <p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p>
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 mt-1 inline-block">{getTaskLabel(item)}</span>
                           </div>
-                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
+                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
                             {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
                           </button>
                         </div>
                       ))}
-                      {childRoutines.length === 0 && <p className="text-center text-white/70 text-xs py-2 italic font-medium">Belum ada tugas rutin.</p>}
+                      {childRoutines.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic font-medium">Belum ada tugas rutin.</p>}
                     </div>
                   )}
                 </div>
 
                 {/* AKORDION PENCAPAIAN */}
-                <div className="bg-black/15 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xs">
-                  <button onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-black/10 transition-all text-left">
+                <div className="bg-slate-900/50 border border-slate-700/60 rounded-2xl overflow-hidden">
+                  <button onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-white drop-shadow-sm">🏆 Misi Pencapaian</span>
-                      <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-black">{childAchievements.length}</span>
+                      <span className="text-xs font-black text-slate-200">🏆 Misi Pencapaian</span>
+                      <span className="bg-pink-500/20 text-pink-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childAchievements.length}</span>
                     </div>
-                    <span className={`text-white text-xs font-black transform transition-transform duration-300 ${isAchieveOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                    <span className={`text-slate-400 text-xs font-black transform transition-transform duration-300 ${isAchieveOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
                   </button>
                   {isAchieveOpen && (
-                    <div className="p-2.5 border-t border-white/10 space-y-2 bg-black/5 animate-fade-in">
+                    <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
                       {childAchievements.map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-3 rounded-xl border border-white/20 bg-white/90 text-slate-900 shadow-sm gap-2">
+                        <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-white text-slate-900 shadow-sm gap-2">
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black truncate">{item.title}</p>
-                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 border border-pink-200 mt-1 inline-block">{getTaskLabel(item)}</span>
+                            <p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p>
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-200 mt-1 inline-block">{getTaskLabel(item)}</span>
                           </div>
-                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
+                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
                             {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
                           </button>
                         </div>
                       ))}
-                      {childAchievements.length === 0 && <p className="text-center text-white/70 text-xs py-2 italic font-medium">Belum ada misi khusus.</p>}
+                      {childAchievements.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic font-medium">Belum ada misi khusus.</p>}
                     </div>
                   )}
                 </div>
 
-                {/* KATALOG TOKO HADIAH KATALOG */}
-                <div className="bg-black/10 border border-white/10 rounded-2xl p-4 space-y-3 backdrop-blur-xs">
-                  <div className="flex justify-between items-center border-b border-white/20 pb-2">
-                    <span className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5 drop-shadow-xs">🎁 Tukar Hadiah Impian</span>
-                    <button type="button" onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="text-[11px] text-white font-black underline bg-black/20 px-2 py-0.5 rounded-md hover:bg-black/30 transition-all">
+                {/* TOKO TUKAR HADIAH */}
+                <div className="bg-slate-900/40 border border-slate-700/60 rounded-2xl p-3.5 space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-700/60 pb-1.5">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">🎁 Tukar Hadiah Impian</span>
+                    <button type="button" onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="text-[10px] text-amber-400 font-black hover:underline bg-slate-800 px-2 py-0.5 rounded-md">
                       {activeCatalogId === profile.id ? 'Tutup ✖️' : 'Buka Toko 🛒'}
                     </button>
                   </div>
                   
                   {activeCatalogId === profile.id && (
-                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 animate-fade-in scrollbar-none">
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1 animate-fade-in scrollbar-none">
                       {childRewards.map(r => (
-                        <div key={r.id} className="flex justify-between items-center p-2.5 rounded-xl bg-white/95 border border-white/20 shadow-sm text-xs gap-2">
-                          <span className="text-slate-900 font-black truncate">{r.title}</span>
-                          <button onClick={() => handleClaimReward(r.id, profile.id, r.cost)} disabled={r.isClaimed || profile.stars < r.cost} className={`px-3 py-1.5 rounded-md font-black text-[10px] transition-all whitespace-nowrap ${r.isClaimed ? 'bg-green-100 text-green-700' : profile.stars < r.cost ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md active:scale-95'}`}>
+                        <div key={r.id} className="flex justify-between items-center p-2 rounded-xl bg-slate-900/80 border border-slate-700 shadow-sm text-xs gap-2">
+                          <span className="text-slate-200 font-bold truncate text-[11px]">{r.title}</span>
+                          <button onClick={() => handleClaimReward(r.id, profile.id, r.cost)} disabled={r.isClaimed || profile.stars < r.cost} className={`px-2.5 py-1 rounded-md font-black text-[10px] transition-all whitespace-nowrap ${r.isClaimed ? 'bg-green-900/30 text-green-400' : profile.stars < r.cost ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md active:scale-95'}`}>
                             {r.isClaimed ? 'Diklaim ⏳' : `${r.cost} ⭐`}
                           </button>
                         </div>
                       ))}
-                      {childRewards.length === 0 && <p className="text-center text-white/70 text-xs py-2 italic font-medium">Belum ada daftar hadiah.</p>}
+                      {childRewards.length === 0 && <p className="text-center text-slate-500 text-xs py-1 italic font-medium">Belum ada daftar hadiah.</p>}
                     </div>
                   )}
                 </div>
@@ -738,7 +742,7 @@ export default function App() {
                         <div className="text-right"><span className="text-yellow-400 font-black text-base">{p.stars}</span><span className="text-slate-500 text-xs ml-1">/ {p.maxStars} ⭐</span></div>
                       </div>
                       <div className="w-full bg-slate-900 rounded-full h-4 border border-slate-700 overflow-hidden relative">
-                        <div className={`h-full rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 transition-all duration-1000`} style={{ width: `${percent}%` }}></div>
+                        <div className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 transition-all duration-1000" style={{ width: `${percent}%` }}></div>
                       </div>
                     </div>
                   );
