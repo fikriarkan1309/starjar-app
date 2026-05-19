@@ -460,7 +460,7 @@ export default function App() {
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
          <div className="text-center space-y-3">
            <div className="text-6xl animate-spin">🌟</div>
-           <p className="animate-pulse">MEMUAT STARJAR...</p>
+           <p className="animate-pulse font-sans tracking-normal">MEMUAT StarJar...</p>
          </div>
       </div>
     );
@@ -470,7 +470,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6 font-sans relative overflow-hidden">
         
-        {/* SOLUSI ANTI ERROR: OPACITY LOGIN PAKAI INLINE STYLE (35%) */}
+        {/* BACKGROUND OVERSLAY LOGIN (35%) */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
           style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.35 }}
@@ -478,7 +478,9 @@ export default function App() {
 
         <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-6 relative z-10">
           <div className="text-center space-y-2">
-            <span className="text-6xl block transform hover:scale-110 transition-transform">🌟</span>
+            {/* FIX 2: GANTI BINTANG LOGIN DENGAN Icon Login.png */}
+            <img src="/Icon Login.png" className="w-20 h-20 mx-auto object-contain transform hover:scale-110 transition-transform mb-1" alt="StarJar" />
+            {/* FIX 1: UBASH TOTAL NAMA APLIKASI JADI StarJar */}
             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-400 tracking-tight">StarJar</h1>
             <p className="text-slate-400 text-sm">Aplikasi Toples Disiplin Anak Digital</p>
           </div>
@@ -1043,9 +1045,14 @@ export default function App() {
 
       {celebration && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none bg-slate-900/60 backdrop-blur-sm transition-opacity duration-500">
-          <div className="text-9xl animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)]">
-            {celebration === 'reward' ? '🎉🎁🎉' : '⭐✨'}
-          </div>
+          {/* FIX 3: GANTI ANIMASI MISI DUA BINTANG MENJADI Icon Menang.png (REWARD TETAP AMAN CADANGAN) */}
+          {celebration === 'reward' ? (
+            <div className="text-9xl animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)]">
+              🎉🎁🎉
+            </div>
+          ) : (
+            <img src="/Icon Menang.png" className="w-48 h-48 animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />
+          )}
         </div>
       )}
 
