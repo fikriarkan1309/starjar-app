@@ -468,8 +468,15 @@ export default function App() {
   
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6 font-sans">
-        <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-6">
+      <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6 font-sans relative overflow-hidden">
+        
+        {/* SOLUSI ANTI ERROR: OPACITY LOGIN PAKAI INLINE STYLE (35%) */}
+        <div 
+          className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
+          style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.35 }}
+        ></div>
+
+        <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-6 relative z-10">
           <div className="text-center space-y-2">
             <span className="text-6xl block transform hover:scale-110 transition-transform">🌟</span>
             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-400 tracking-tight">StarJar</h1>
@@ -564,12 +571,10 @@ export default function App() {
           const isAchieveOpen = !!childAchieveOpen[profile.id];
 
           return (
-            // FIX GAMBAR 3: KOTAK IPAD DIPERRAMPING JADI 'md:w-[350px]' & BACK KOTAK GELAP SEPERTI GAMBAR 2
             <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
               
               {/* HEADER AVATAR KARTU ANAK */}
               <div className="flex flex-col items-center justify-center text-center space-y-3">
-                {/* FIX GAMBAR 2: GRADASI WARNA HANYA MEMBUNGKUS SEKITAR AVATAR SAJA */}
                 <div className={`p-4 rounded-3xl bg-gradient-to-br ${profile.theme} shadow-lg flex items-center justify-center min-w-[90px] min-h-[90px]`}>
                   <span className="text-5xl block filter drop-shadow">{profile.avatar}</span>
                 </div>
@@ -585,7 +590,7 @@ export default function App() {
                     <div className="w-14 h-2 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div>
                   </div>
                   
-                  {/* CAIRAN TETAP WARNA KUNING EMAS BINTANG (KUNCI PATEN) */}
+                  {/* CAIRAN TETAP WARNA KUNING EMAS BINTANG */}
                   <div className="w-full rounded-b-[1.8rem] bg-gradient-to-t from-yellow-400 to-amber-500 transition-all duration-1000 relative shadow-[inset_0_2px_10px_rgba(255,255,255,0.3)]" style={{ height: `${fillPercentage}%` }}>
                     {fillPercentage > 5 && (
                       <div className="absolute inset-0 flex flex-wrap gap-1.5 p-2 items-end justify-center overflow-hidden animate-pulse">
@@ -699,7 +704,7 @@ export default function App() {
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     return (
-      <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+      <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative z-10">
         <header className="border-b border-slate-700 pb-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <div>
             <h1 className="text-3xl font-black text-white">Halo, Ayah & Ibu! 👋</h1>
@@ -1028,7 +1033,14 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 font-sans pb-32">
+    <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 font-sans pb-32 relative overflow-hidden">
+      
+      {/* SOLUSI ANTI ERROR: OPACITY DASHBOARD PAKAI INLINE STYLE (15%) */}
+      <div 
+        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
+        style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.15 }}
+      ></div>
+
       {celebration && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none bg-slate-900/60 backdrop-blur-sm transition-opacity duration-500">
           <div className="text-9xl animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)]">
@@ -1037,7 +1049,10 @@ export default function App() {
         </div>
       )}
 
-      {currentRole === 'child' ? renderChildView() : renderParentView()}
+      {/* WRAPPER RELATIVE AGAR KONTEN UTAMA TETAP TAJAM DI ATAS OVERLAY BACKGROUND */}
+      <div className="relative z-10 w-full">
+        {currentRole === 'child' ? renderChildView() : renderParentView()}
+      </div>
 
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-1">
         <button type="button" onClick={() => setCurrentRole('child')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'child' ? 'bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 shadow-md scale-105' : 'text-slate-400 hover:text-white'}`}>👶 Mode Anak</button>
