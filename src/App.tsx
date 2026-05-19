@@ -96,12 +96,31 @@ interface Reward {
   assignedTo: string;
 }
 
+// Helper Tanggal Lokal yang Stabil
+const getLocalDateString = (d: Date) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const getWeekNumber = (d: Date): string => {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   return date.getUTCFullYear() + '-' + weekNo;
+};
+
+// Fungsi Mengambil Warna Hex dari Tema untuk Grafik
+const getThemeHex = (theme: string) => {
+  if (theme.includes('pink') || theme.includes('rose')) return '#ec4899';
+  if (theme.includes('cyan') || theme.includes('blue')) return '#0ea5e9';
+  if (theme.includes('purple') || theme.includes('indigo')) return '#8b5cf6';
+  if (theme.includes('emerald') || theme.includes('teal')) return '#10b981';
+  if (theme.includes('orange') || theme.includes('red')) return '#f97316';
+  if (theme.includes('yellow') || theme.includes('amber')) return '#eab308';
+  return '#cbd5e1'; 
 };
 
 export default function App() {
@@ -129,7 +148,10 @@ export default function App() {
 
   const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
   const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
-  const [parentTab, setParentTab] = useState<'stats' | 'approval' | 'manage'>('manage');
+  
+  // PENAMBAHAN TAB "history" UNTUK RIWAYAT
+  const [parentTab, setParentTab] = useState<'stats' | 'history' | 'approval' | 'manage'>('manage');
+  
   const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
 
   const [showChildForm, setShowChildForm] = useState(false);
@@ -158,6 +180,7 @@ export default function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
+  const [stats, setStats] = useState<any>({}); // MENYIMPAN DATA GRAFIK 7 HARI
 
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editProfileForm, setEditProfileForm] = useState<Partial<Profile>>({});
@@ -179,11 +202,8 @@ export default function App() {
 
   useEffect(() => {
     if (!user) {
-      setProfiles([]);
-      setTasks([]);
-      setRewards([]);
-      setIsPremium(false);
-      return;
+      setProfiles([]); setTasks([]); setRewards([]); setStats({});
+      setIsPremium(false); return;
     }
 
     const userBasePath = `users/${user.uid}`;
@@ -198,26 +218,25 @@ export default function App() {
       const data = snapshot.val();
       if (!data) { setProfiles([]); return; }
       const pData = Object.keys(data).map(key => ({
-        id: key,
-        name: data[key].name || '',
-        role: data[key].role || '',
+        id: key, name: data[key].name || '', role: data[key].role || '',
         stars: typeof data[key].stars === 'number' ? data[key].stars : 0,
         maxStars: typeof data[key].maxStars === 'number' ? data[key].maxStars : 50,
-        avatar: data[key].avatar || '👶',
-        theme: data[key].theme || 'from-pink-500 to-rose-400'
+        avatar: data[key].avatar || '👶', theme: data[key].theme || 'from-pink-500 to-rose-400'
       } as Profile));
       setProfiles(pData);
+    });
+
+    const unsubStats = onValue(ref(db, `${userBasePath}/stats`), (snapshot) => {
+      setStats(snapshot.val() || {});
     });
 
     const unsubRewards = onValue(ref(db, `${userBasePath}/rewards`), (snapshot) => {
       const data = snapshot.val();
       if (!data) { setRewards([]); return; }
       const rData = Object.keys(data).map(key => ({
-        id: key,
-        title: data[key].title || '',
+        id: key, title: data[key].title || '',
         cost: typeof data[key].cost === 'number' ? data[key].cost : 10,
-        isClaimed: !!data[key].isClaimed,
-        isApproved: !!data[key].isApproved,
+        isClaimed: !!data[key].isClaimed, isApproved: !!data[key].isApproved,
         assignedTo: String(data[key].assignedTo || '')
       } as Reward));
       setRewards(rData);
@@ -227,22 +246,16 @@ export default function App() {
       const data = snapshot.val();
       if (!data) { setTasks([]); return; }
       const tData = Object.keys(data).map(key => ({
-        id: key,
-        title: data[key].title || '',
-        type: data[key].type || 'Daily',
-        recurrence: data[key].recurrence || 'none',
-        reward: typeof data[key].reward === 'number' ? data[key].reward : 2,
-        isDone: !!data[key].isDone,
-        isApproved: !!data[key].isApproved,
-        assignedTo: String(data[key].assignedTo || '')
+        id: key, title: data[key].title || '', type: data[key].type || 'Daily',
+        recurrence: data[key].recurrence || 'none', reward: typeof data[key].reward === 'number' ? data[key].reward : 2,
+        isDone: !!data[key].isDone, isApproved: !!data[key].isApproved, assignedTo: String(data[key].assignedTo || '')
       } as Task));
       
       setTasks(tData);
 
-      const today = new Date();
-      const todayStr = today.toDateString();
-      const currentWeek = getWeekNumber(today);
-      const currentMonth = today.getFullYear() + '-' + today.getMonth();
+      const todayStr = new Date().toDateString();
+      const currentWeek = getWeekNumber(new Date());
+      const currentMonth = new Date().getFullYear() + '-' + new Date().getMonth();
 
       if (localStorage.getItem(`lastDailyReset_${user.uid}`) !== todayStr) {
         tData.forEach(t => {
@@ -272,7 +285,7 @@ export default function App() {
       }
     });
 
-    return () => { unsubPremium(); unsubProfiles(); unsubTasks(); unsubRewards(); };
+    return () => { unsubPremium(); unsubProfiles(); unsubTasks(); unsubRewards(); unsubStats(); };
   }, [user]);
 
   const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
@@ -348,8 +361,14 @@ export default function App() {
     if (!childId || !user) return;
     const child = profiles.find(p => p.id === childId);
     if (!child) return;
+    
     await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isApproved: true });
     await update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: Math.min(child.stars + reward, child.maxStars) });
+
+    // MENYIMPAN DATA GRAFIK 7 HARI KETIKA DI-APPROVE
+    const todayStr = getLocalDateString(new Date());
+    const currentDailyStars = stats[childId]?.[todayStr] || 0;
+    await update(ref(db, `users/${user.uid}/stats/${childId}`), { [todayStr]: currentDailyStars + reward });
   };
 
   const handleApproveReward = async (rewardId: string) => {
@@ -361,11 +380,8 @@ export default function App() {
   const saveEditProfile = async () => {
     if (!editingProfileId || !user) return;
     await update(ref(db, `users/${user.uid}/profiles/${editingProfileId}`), { 
-      name: editProfileForm.name || '',
-      role: editProfileForm.role || '',
-      maxStars: Number(editProfileForm.maxStars || 50),
-      avatar: editProfileForm.avatar || '👶',
-      theme: editProfileForm.theme || 'from-pink-500 to-rose-400'
+      name: editProfileForm.name || '', role: editProfileForm.role || '',
+      maxStars: Number(editProfileForm.maxStars || 50), avatar: editProfileForm.avatar || '👶', theme: editProfileForm.theme || 'from-pink-500 to-rose-400'
     });
     setEditingProfileId(null);
   };
@@ -385,11 +401,8 @@ export default function App() {
     const taskType = editTaskForm.type || 'Daily';
     const taskRecurrence = taskType === 'Daily' ? (editTaskForm.recurrence || 'daily') : 'none';
     await update(ref(db, `users/${user.uid}/tasks/${editingTaskId}`), { 
-      title: editTaskForm.title || '',
-      reward: Number(editTaskForm.reward || 0), 
-      type: taskType,
-      recurrence: taskRecurrence,
-      assignedTo: editTaskForm.assignedTo || ''
+      title: editTaskForm.title || '', reward: Number(editTaskForm.reward || 0), type: taskType,
+      recurrence: taskRecurrence, assignedTo: editTaskForm.assignedTo || ''
     });
     setEditingTaskId(null);
   };
@@ -399,9 +412,7 @@ export default function App() {
   const saveEditReward = async () => {
     if (!editingRewardId || !user) return;
     await update(ref(db, `users/${user.uid}/rewards/${editingRewardId}`), { 
-      title: editRewardForm.title || '',
-      cost: Number(editRewardForm.cost || 0),
-      assignedTo: editRewardForm.assignedTo || ''
+      title: editRewardForm.title || '', cost: Number(editRewardForm.cost || 0), assignedTo: editRewardForm.assignedTo || ''
     });
     setEditingRewardId(null);
   };
@@ -470,7 +481,6 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6 font-sans relative overflow-hidden">
         
-        {/* BACKGROUND OVERSLAY LOGIN (35%) */}
         <div 
           className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
           style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.35 }}
@@ -478,9 +488,7 @@ export default function App() {
 
         <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-6 relative z-10">
           <div className="text-center space-y-2">
-            {/* FIX 2: GANTI BINTANG LOGIN DENGAN Icon Login.png */}
             <img src="/Icon Login.png" className="w-20 h-20 mx-auto object-contain transform hover:scale-110 transition-transform mb-1" alt="StarJar" />
-            {/* FIX 1: UBASH TOTAL NAMA APLIKASI JADI StarJar */}
             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-400 tracking-tight">StarJar</h1>
             <p className="text-slate-400 text-sm">Aplikasi Toples Disiplin Anak Digital</p>
           </div>
@@ -560,7 +568,6 @@ export default function App() {
         </div>
       )}
 
-      {/* HORIZONTAL SCROLL LAYOUT UNTUK IPAD & PC */}
       <div className="flex flex-col md:flex-row md:overflow-x-auto gap-8 items-start md:pb-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent w-full justify-center md:justify-start">
         {profiles.map(profile => {
           const fillPercentage = Math.min((profile.stars / profile.maxStars) * 100, 100);
@@ -575,7 +582,6 @@ export default function App() {
           return (
             <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
               
-              {/* HEADER AVATAR KARTU ANAK */}
               <div className="flex flex-col items-center justify-center text-center space-y-3">
                 <div className={`p-4 rounded-3xl bg-gradient-to-br ${profile.theme} shadow-lg flex items-center justify-center min-w-[90px] min-h-[90px]`}>
                   <span className="text-5xl block filter drop-shadow">{profile.avatar}</span>
@@ -586,13 +592,11 @@ export default function App() {
                   <span className="text-[10px] bg-slate-700/80 text-slate-300 font-black px-3 py-1 rounded-full uppercase tracking-wider mt-1 inline-block">{profile.role}</span>
                 </div>
 
-                {/* VISUAL TOPLES KACA DIGITAL */}
                 <div className="relative w-40 h-56 bg-white/10 rounded-[2.5rem] border-4 border-white/20 shadow-[inset_0_4px_20px_rgba(255,255,255,0.1)] flex flex-col justify-end p-4 overflow-hidden">
                   <div className="absolute top-0 left-0 right-0 h-5 bg-gradient-to-b from-black/20 to-transparent z-10 flex items-center justify-center">
                     <div className="w-14 h-2 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div>
                   </div>
                   
-                  {/* CAIRAN TETAP WARNA KUNING EMAS BINTANG */}
                   <div className="w-full rounded-b-[1.8rem] bg-gradient-to-t from-yellow-400 to-amber-500 transition-all duration-1000 relative shadow-[inset_0_2px_10px_rgba(255,255,255,0.3)]" style={{ height: `${fillPercentage}%` }}>
                     {fillPercentage > 5 && (
                       <div className="absolute inset-0 flex flex-wrap gap-1.5 p-2 items-end justify-center overflow-hidden animate-pulse">
@@ -609,10 +613,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* LIST EXPANDABLE DATA MISI DAN REWARD MEMANJANG KE BAWAH */}
               <div className="w-full flex flex-col gap-4">
                 
-                {/* AKORDION RUTINITAS */}
                 <div className="bg-slate-900/50 border border-slate-700/60 rounded-2xl overflow-hidden">
                   <button onClick={() => toggleChildRoutine(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
                     <div className="flex items-center gap-2">
@@ -639,7 +641,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* AKORDION PENCAPAIAN */}
                 <div className="bg-slate-900/50 border border-slate-700/60 rounded-2xl overflow-hidden">
                   <button onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
                     <div className="flex items-center gap-2">
@@ -666,7 +667,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* TOKO TUKAR HADIAH */}
                 <div className="bg-slate-900/40 border border-slate-700/60 rounded-2xl p-3.5 space-y-3">
                   <div className="flex justify-between items-center border-b border-slate-700/60 pb-1.5">
                     <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">🎁 Tukar Hadiah Impian</span>
@@ -705,6 +705,17 @@ export default function App() {
     const completedTasks = tasks.filter(t => t.isApproved).length;
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
+    // Persiapan Data Chart Garis (7 Hari Terakhir)
+    const last7Days = Array.from({length: 7}).map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d;
+    });
+    
+    const maxChartVal = Math.max(10, ...profiles.flatMap(p => 
+      last7Days.map(d => stats[p.id]?.[getLocalDateString(d)] || 0)
+    ));
+
     return (
       <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative z-10">
         <header className="border-b border-slate-700 pb-6 flex flex-col md:flex-row justify-between items-center gap-4">
@@ -712,12 +723,14 @@ export default function App() {
             <h1 className="text-3xl font-black text-white">Halo, Ayah & Ibu! 👋</h1>
             <p className="text-slate-400 mt-2 text-sm">Pusat Kendali Aplikasi Keluarga.</p>
           </div>
-          <div className="flex bg-slate-800 p-1 rounded-2xl border border-slate-700 overflow-x-auto w-full md:w-auto">
-            <button type="button" onClick={() => setParentTab('stats')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'stats' ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📊 Statistik</button>
-            <button type="button" onClick={() => setParentTab('approval')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'approval' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
+          {/* SCROLL HORIZONTAL BAR NAVIGASI AGAR RAPI DI HP */}
+          <div className="flex bg-slate-800 p-1 rounded-2xl border border-slate-700 overflow-x-auto flex-nowrap w-full md:w-auto scrollbar-none snap-x gap-1">
+            <button type="button" onClick={() => setParentTab('stats')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'stats' ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📊 Statistik</button>
+            <button type="button" onClick={() => setParentTab('history')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'history' ? 'bg-green-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📜 Riwayat</button>
+            <button type="button" onClick={() => setParentTab('approval')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'approval' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
               🔔 Persetujuan {(pendingTasks.length > 0 || pendingRewards.length > 0) && <span className="ml-1 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">{pendingTasks.length + pendingRewards.length}</span>}
             </button>
-            <button type="button" onClick={() => setParentTab('manage')} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'manage' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>🛠️ Kelola Sistem</button>
+            <button type="button" onClick={() => setParentTab('manage')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'manage' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>🛠️ Kelola Sistem</button>
           </div>
         </header>
 
@@ -736,6 +749,78 @@ export default function App() {
               <span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">📈</span>
             </div>
 
+            {/* GRAFIK KONSISTENSI 7 HARI MENGGUNAKAN SVG */}
+            <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-6">
+              <h3 className="text-base font-bold text-slate-200">📈 Grafik Konsistensi Bintang (7 Hari Terakhir)</h3>
+              
+              {profiles.length === 0 ? (
+                <p className="text-xs text-slate-500 italic text-center py-4">Belum ada profil untuk direkam aktivitasnya.</p>
+              ) : (
+                <>
+                  <div className="w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                    <div className="min-w-[500px] h-56 relative pt-4 pr-4 pl-8">
+                      
+                      {/* Y Axis Grid Lines */}
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6 pl-8">
+                        {[1, 0.75, 0.5, 0.25, 0].map(multiplier => (
+                          <div key={multiplier} className="w-full border-t border-slate-700/50 flex items-center">
+                            <span className="text-[10px] text-slate-500 font-bold -ml-6 -mt-2 bg-slate-800 pr-1 absolute">
+                              {Math.round(maxChartVal * multiplier)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <svg viewBox="0 0 600 200" className="w-full h-full overflow-visible preserve-3d" preserveAspectRatio="none">
+                        {profiles.map(p => {
+                          const xStep = 600 / 6;
+                          const points = last7Days.map((d, index) => {
+                            const dateStr = getLocalDateString(d);
+                            const val = stats[p.id]?.[dateStr] || 0;
+                            const x = index * xStep;
+                            const y = 200 - (val / maxChartVal) * 200;
+                            return `${x},${y}`;
+                          });
+                          
+                          const hexColor = getThemeHex(p.theme);
+
+                          return (
+                            <g key={p.id}>
+                              <polyline points={points.join(' ')} fill="none" stroke={hexColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-lg" />
+                              {points.map((pt, i) => {
+                                const [px, py] = pt.split(',');
+                                return <circle key={i} cx={px} cy={py} r="5" fill={hexColor} stroke="#1e293b" strokeWidth="2" />;
+                              })}
+                            </g>
+                          );
+                        })}
+                      </svg>
+                      
+                      {/* X Axis Labels */}
+                      <div className="absolute bottom-0 left-8 right-4 flex justify-between mt-2">
+                        {last7Days.map((d, i) => (
+                          <span key={i} className="text-[10px] font-bold text-slate-500 -ml-3">
+                            {d.toLocaleDateString('id-ID', { weekday: 'short' })}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Legend Warna Anak */}
+                  <div className="flex flex-wrap gap-4 mt-2 justify-center border-t border-slate-700/50 pt-4">
+                    {profiles.map(p => (
+                      <div key={p.id} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full shadow" style={{ backgroundColor: getThemeHex(p.theme) }}></div>
+                        <span className="text-xs text-slate-300 font-bold">{p.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* TOTAL TABUNGAN TERKINI */}
             <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-4">
               <h3 className="text-base font-bold text-slate-200">📊 Tabungan Bintang Anak Realtime</h3>
               {profiles.length === 0 && <p className="text-xs text-slate-500 italic text-center py-4">Belum ada riwayat tabungan anak.</p>}
@@ -751,6 +836,52 @@ export default function App() {
                       <div className="w-full bg-slate-900 rounded-full h-4 border border-slate-700 overflow-hidden relative">
                         <div className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 transition-all duration-1000" style={{ width: `${percent}%` }}></div>
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {parentTab === 'history' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-slate-800 rounded-3xl p-6 md:p-8 border border-slate-700 shadow-xl">
+              <h2 className="text-xl font-black text-white mb-8 flex items-center gap-3">
+                <span className="bg-purple-500/20 text-purple-400 p-2 rounded-xl text-lg">📜</span> 
+                Riwayat Misi Besar (Pencapaian)
+              </h2>
+              
+              {profiles.length === 0 && <p className="text-slate-500 text-sm">Belum ada data profil anak.</p>}
+              
+              <div className="space-y-10">
+                {profiles.map(profile => {
+                  const historyTasks = tasks.filter(t => String(t.assignedTo) === String(profile.id) && t.type === 'Achievement' && t.isApproved);
+                  
+                  return (
+                    <div key={profile.id} className="relative">
+                      <div className="flex items-center gap-3 mb-4 border-b border-slate-700/60 pb-3">
+                        <div className={`p-2 rounded-xl bg-gradient-to-br ${profile.theme} shadow-lg`}>
+                          <span className="text-xl block filter drop-shadow">{profile.avatar}</span>
+                        </div>
+                        <h3 className="text-lg font-black text-white">{profile.name}</h3>
+                      </div>
+                      
+                      {historyTasks.length === 0 ? (
+                        <p className="text-slate-500 text-xs font-medium italic pl-[3.25rem]">Belum ada pencapaian besar yang berhasil diselesaikan.</p>
+                      ) : (
+                        <div className="space-y-3 pl-[3.25rem]">
+                          {historyTasks.map(task => (
+                            <div key={task.id} className="flex justify-between items-center bg-slate-900/60 p-4 rounded-2xl border border-slate-700 shadow-sm hover:border-slate-600 transition-colors">
+                              <div>
+                                <p className="text-sm font-bold text-slate-200">{task.title}</p>
+                                <span className="text-[10px] text-green-400 font-black mt-1 inline-block uppercase tracking-wider bg-green-500/10 px-2 py-0.5 rounded-md">✓ Sukses & Disetujui</span>
+                              </div>
+                              <span className="text-xl font-black text-yellow-400 drop-shadow-md">+{task.reward} <span className="text-sm">⭐</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1037,7 +1168,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 font-sans pb-32 relative overflow-hidden">
       
-      {/* SOLUSI ANTI ERROR: OPACITY DASHBOARD PAKAI INLINE STYLE (15%) */}
       <div 
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
         style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.15 }}
@@ -1045,18 +1175,17 @@ export default function App() {
 
       {celebration && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none bg-slate-900/60 backdrop-blur-sm transition-opacity duration-500">
-          {/* FIX 3: GANTI ANIMASI MISI DUA BINTANG MENJADI Icon Menang.png (REWARD TETAP AMAN CADANGAN) */}
           {celebration === 'reward' ? (
             <div className="text-9xl animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)]">
               🎉🎁🎉
             </div>
           ) : (
-            <img src="/Icon Menang.png" className="w-48 h-48 animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />
+            /* UKURAN IKON MENANG DIBUAT RAKSASA (75vw / Maks 600px) */
+            <img src="/Icon Menang.png" className="w-[75vw] max-w-[600px] h-auto animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />
           )}
         </div>
       )}
 
-      {/* WRAPPER RELATIVE AGAR KONTEN UTAMA TETAP TAJAM DI ATAS OVERLAY BACKGROUND */}
       <div className="relative z-10 w-full">
         {currentRole === 'child' ? renderChildView() : renderParentView()}
       </div>
