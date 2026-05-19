@@ -2,15 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, push, update, remove } from 'firebase/database';
 import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  sendPasswordResetEmail 
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
+  signOut, onAuthStateChanged, sendPasswordResetEmail 
 } from 'firebase/auth';
 
-// --- DATA TEMPLATE POPULER STARJAR (LANGSUNG DITANAM AMAN) ---
+// --- DATA TEMPLATE POPULER STARJAR ---
 const MISSION_TEMPLATES = [
   { id: 'm1', title: 'Sikat Gigi Tanpa Drama (Pagi & Malam)', points: 1, category: '🏠 Kemandirian' },
   { id: 'm2', title: 'Taruh Baju Kotor ke Keranjang', points: 1, category: '🏠 Kemandirian' },
@@ -51,6 +47,16 @@ const REWARD_TEMPLATES = [
   { id: 'r12', title: 'Tukar "Kupon Hadiah Misteri" (Gacha)', points: 10, category: '❓ Kupon Misteri' }
 ];
 
+// DEFAULT TEMPLATE HADIAH LUCKY SPIN (Nanti Disimpan di Database)
+const DEFAULT_WHEEL_PRIZES = [
+  { label: 'Zonk! Coba Lagi', type: 'zonk', val: 0, color: '#ef4444', prob: 20 },
+  { label: '+2 Bintang', type: 'star', val: 2, color: '#3b82f6', prob: 30 },
+  { label: '+5 Bintang', type: 'star', val: 5, color: '#10b981', prob: 15 },
+  { label: 'Es Krim!', type: 'reward', val: 'Es Krim', color: '#f59e0b', prob: 5 },
+  { label: '+1 Bintang', type: 'star', val: 1, color: '#8b5cf6', prob: 20 },
+  { label: 'Peluk Ayah/Ibu', type: 'zonk', val: 0, color: '#ec4899', prob: 10 },
+];
+
 const firebaseConfig = {
   apiKey: "AIzaSyCyK1iq0pRBcRCUOElmHxhfOOyRek_Graw",
   authDomain: "starjar-f3461.firebaseapp.com",
@@ -66,44 +72,19 @@ const db = getDatabase(app);
 const auth = getAuth(app);
 
 interface Profile {
-  id: string;
-  name: string;
-  role: string;
-  stars: number;
-  maxStars: number;
-  avatar: string;
-  theme: string;
-  streak: number;
-  lastStreakDate: string;
+  id: string; name: string; role: string; stars: number; maxStars: number;
+  avatar: string; theme: string; streak: number; lastStreakDate: string;
+  tickets: number; lastTicketDate: string; 
 }
-
 interface Task {
-  id: string;
-  title: string;
-  type: string;
-  recurrence: string;
-  reward: number;
-  isDone: boolean;
-  isApproved: boolean;
-  assignedTo: string;
+  id: string; title: string; type: string; recurrence: string;
+  reward: number; isDone: boolean; isApproved: boolean; assignedTo: string;
 }
-
 interface Reward {
-  id: string;
-  title: string;
-  cost: number;
-  isClaimed: boolean;
-  isApproved: boolean;
-  assignedTo: string;
+  id: string; title: string; cost: number; isClaimed: boolean; isApproved: boolean; assignedTo: string;
 }
 
-const getLocalDateString = (d: Date) => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
+const getLocalDateString = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const getWeekNumber = (d: Date): string => {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
@@ -111,7 +92,6 @@ const getWeekNumber = (d: Date): string => {
   const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   return date.getUTCFullYear() + '-' + weekNo;
 };
-
 const getThemeHex = (theme: string) => {
   if (theme.includes('pink') || theme.includes('rose')) return '#ec4899';
   if (theme.includes('cyan') || theme.includes('blue')) return '#0ea5e9';
@@ -121,13 +101,10 @@ const getThemeHex = (theme: string) => {
   if (theme.includes('yellow') || theme.includes('amber')) return '#eab308';
   return '#cbd5e1'; 
 };
-
 const getActiveStreak = (profile: Profile) => {
   const todayStr = getLocalDateString(new Date());
   const yesterdayStr = getLocalDateString(new Date(Date.now() - 86400000));
-  if (profile.lastStreakDate === todayStr || profile.lastStreakDate === yesterdayStr) {
-    return profile.streak || 0;
-  }
+  if (profile.lastStreakDate === todayStr || profile.lastStreakDate === yesterdayStr) return profile.streak || 0;
   return 0; 
 };
 
@@ -157,30 +134,22 @@ export default function App() {
   const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
   const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
   const [parentTab, setParentTab] = useState<'stats' | 'history' | 'approval' | 'manage'>('manage');
-  const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
+  
+  // STATE ANIMASI & GACHA
+  const [celebration, setCelebration] = useState<'task' | 'reward' | 'ticket' | 'spin_win' | null>(null);
+  const [spinWinText, setSpinWinText] = useState<string>('');
+  const [activeWheelChild, setActiveWheelChild] = useState<Profile | null>(null);
+  const [spinDegree, setSpinDegree] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [wheelPrizes, setWheelPrizes] = useState<any[]>(DEFAULT_WHEEL_PRIZES);
 
   const [showChildForm, setShowChildForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showRewardForm, setShowRewardForm] = useState(false);
+  const [showWheelForm, setShowWheelForm] = useState(false);
 
   const [childRoutineOpen, setChildRoutineOpen] = useState<{ [key: string]: boolean }>({});
   const [childAchieveOpen, setChildAchieveOpen] = useState<{ [key: string]: boolean }>({});
-
-  const playSound = (type: 'success' | 'tada') => {
-    try {
-      const url = type === 'success' 
-        ? 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3' 
-        : 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'; 
-      const audio = new Audio(url);
-      audio.play();
-    } catch (e) { console.log(e); }
-  };
-
-  const triggerCelebration = (type: 'task' | 'reward') => {
-    playSound(type === 'reward' ? 'tada' : 'success');
-    setCelebration(type);
-    setTimeout(() => setCelebration(null), 2500);
-  };
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -194,68 +163,81 @@ export default function App() {
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [editRewardForm, setEditRewardForm] = useState<Partial<Reward>>({});
 
+  const playSound = (type: 'success' | 'tada' | 'ticket' | 'spin') => {
+    try {
+      let url = 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3';
+      if (type === 'tada') url = 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3';
+      if (type === 'ticket') url = 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3';
+      if (type === 'spin') url = 'https://assets.mixkit.co/active_storage/sfx/2011/2011-preview.mp3';
+      new Audio(url).play();
+    } catch (e) {}
+  };
+
+  const triggerCelebration = (type: 'task' | 'reward', gotTicket = false) => {
+    playSound(type === 'reward' ? 'tada' : 'success');
+    setCelebration(type);
+    
+    if (type === 'task' && gotTicket) {
+      setTimeout(() => {
+        playSound('ticket');
+        setCelebration('ticket');
+        setTimeout(() => setCelebration(null), 2500);
+      }, 2000);
+    } else {
+      setTimeout(() => setCelebration(null), 2500);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoadingAuth(false);
-      if (!currentUser) { setLoadingPremium(false); }
+      setUser(currentUser); setLoadingAuth(false); if (!currentUser) setLoadingPremium(false);
     });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!user) {
-      setProfiles([]); setTasks([]); setRewards([]); setStats({});
-      setIsPremium(false); return;
-    }
-
+    if (!user) { setProfiles([]); setTasks([]); setRewards([]); setStats({}); setIsPremium(false); return; }
     const userBasePath = `users/${user.uid}`;
     setLoadingPremium(true);
 
-    const unsubPremium = onValue(ref(db, `${userBasePath}/isPremium`), (snapshot) => {
-      setIsPremium(!!snapshot.val());
-      setLoadingPremium(false);
+    const unsubPremium = onValue(ref(db, `${userBasePath}/isPremium`), (snapshot) => { setIsPremium(!!snapshot.val()); setLoadingPremium(false); });
+
+    const unsubWheel = onValue(ref(db, `${userBasePath}/wheelPrizes`), (snapshot) => {
+      if (snapshot.exists()) setWheelPrizes(snapshot.val());
+      else setWheelPrizes(DEFAULT_WHEEL_PRIZES);
     });
 
     const unsubProfiles = onValue(ref(db, `${userBasePath}/profiles`), (snapshot) => {
       const data = snapshot.val();
-      if (!data) { setProfiles([]); return; }
-      const pData = Object.keys(data).map(key => ({
+      if (!data) return setProfiles([]);
+      setProfiles(Object.keys(data).map(key => ({
         id: key, name: data[key].name || '', role: data[key].role || '',
-        stars: typeof data[key].stars === 'number' ? data[key].stars : 0,
-        maxStars: typeof data[key].maxStars === 'number' ? data[key].maxStars : 50,
+        stars: data[key].stars || 0, maxStars: data[key].maxStars || 50,
         avatar: data[key].avatar || '👶', theme: data[key].theme || 'from-pink-500 to-rose-400',
-        streak: typeof data[key].streak === 'number' ? data[key].streak : 0,
-        lastStreakDate: data[key].lastStreakDate || ''
-      } as Profile));
-      setProfiles(pData);
+        streak: data[key].streak || 0, lastStreakDate: data[key].lastStreakDate || '',
+        tickets: data[key].tickets || 0, lastTicketDate: data[key].lastTicketDate || ''
+      } as Profile)));
     });
 
-    const unsubStats = onValue(ref(db, `${userBasePath}/stats`), (snapshot) => {
-      setStats(snapshot.val() || {});
-    });
+    const unsubStats = onValue(ref(db, `${userBasePath}/stats`), (snapshot) => setStats(snapshot.val() || {}));
 
     const unsubRewards = onValue(ref(db, `${userBasePath}/rewards`), (snapshot) => {
       const data = snapshot.val();
-      if (!data) { setRewards([]); return; }
-      const rData = Object.keys(data).map(key => ({
-        id: key, title: data[key].title || '',
-        cost: typeof data[key].cost === 'number' ? data[key].cost : 10,
-        isClaimed: !!data[key].isClaimed, isApproved: !!data[key].isApproved,
-        assignedTo: String(data[key].assignedTo || '')
-      } as Reward));
-      setRewards(rData);
+      if (!data) return setRewards([]);
+      setRewards(Object.keys(data).map(key => ({
+        id: key, title: data[key].title || '', cost: data[key].cost || 10,
+        isClaimed: !!data[key].isClaimed, isApproved: !!data[key].isApproved, assignedTo: String(data[key].assignedTo || '')
+      } as Reward)));
     });
 
     const unsubTasks = onValue(ref(db, `${userBasePath}/tasks`), (snapshot) => {
       const data = snapshot.val();
-      if (!data) { setTasks([]); return; }
+      if (!data) return setTasks([]);
       const tData = Object.keys(data).map(key => ({
         id: key, title: data[key].title || '', type: data[key].type || 'Daily',
-        recurrence: data[key].recurrence || 'none', reward: typeof data[key].reward === 'number' ? data[key].reward : 2,
+        recurrence: data[key].recurrence || 'none', reward: data[key].reward || 2,
         isDone: !!data[key].isDone, isApproved: !!data[key].isApproved, assignedTo: String(data[key].assignedTo || '')
       } as Task));
-      
       setTasks(tData);
 
       const todayStr = new Date().toDateString();
@@ -263,110 +245,63 @@ export default function App() {
       const currentMonth = new Date().getFullYear() + '-' + new Date().getMonth();
 
       if (localStorage.getItem(`lastDailyReset_${user.uid}`) !== todayStr) {
-        tData.forEach(t => {
-          if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) {
-            update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
-          }
-        });
+        tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false }); });
         localStorage.setItem(`lastDailyReset_${user.uid}`, todayStr);
       }
-
       if (localStorage.getItem(`lastWeeklyReset_${user.uid}`) !== currentWeek) {
-        tData.forEach(t => {
-          if (t.type === 'Daily' && t.recurrence === 'weekly' && (t.isDone || t.isApproved)) {
-            update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
-          }
-        });
+        tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'weekly' && (t.isDone || t.isApproved)) update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false }); });
         localStorage.setItem(`lastWeeklyReset_${user.uid}`, currentWeek);
       }
-
       if (localStorage.getItem(`lastMonthlyReset_${user.uid}`) !== currentMonth) {
-        tData.forEach(t => {
-          if (t.type === 'Daily' && t.recurrence === 'monthly' && (t.isDone || t.isApproved)) {
-            update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false });
-          }
-        });
+        tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'monthly' && (t.isDone || t.isApproved)) update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false }); });
         localStorage.setItem(`lastMonthlyReset_${user.uid}`, currentMonth);
       }
     });
 
-    return () => { unsubPremium(); unsubProfiles(); unsubTasks(); unsubRewards(); unsubStats(); };
+    return () => { unsubPremium(); unsubWheel(); unsubProfiles(); unsubTasks(); unsubRewards(); unsubStats(); };
   }, [user]);
 
   const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
   const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: 'all' });
   const [rewardForm, setRewardForm] = useState({ title: '', cost: 10, assignedTo: 'all' });
 
-  const handleCompleteTask = async (taskId: string) => {
+  // --- LOGIKA MISI & DAPAT TIKET GACHA ---
+  const handleCompleteTask = async (taskId: string, childId: string) => {
     if (!user) return;
-    triggerCelebration('task');
+    const child = profiles.find(p => p.id === childId);
+    if (!child) return;
+
+    const todayStr = getLocalDateString(new Date());
+    let gotTicket = false;
+
+    // Cek Tiket Harian: Hanya dapat 1 tiket di misi pertama setiap harinya
+    if (child.lastTicketDate !== todayStr) {
+      gotTicket = true;
+      await update(ref(db, `users/${user.uid}/profiles/${childId}`), {
+        tickets: (child.tickets || 0) + 1,
+        lastTicketDate: todayStr
+      });
+    }
+
     await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: true });
+    
+    // Panggil Rantai Animasi
+    triggerCelebration('task', gotTicket);
   };
 
   const handleClaimReward = async (rewardId: string, childId: string, cost: number) => {
     if (!user) return;
     const child = profiles.find(p => p.id === childId);
-    if (!child) return;
-    if (child.stars < cost) return alert("Bintangmu belum cukup! 💪🌟");
-    triggerCelebration('reward');
+    if (!child || child.stars < cost) return alert("Bintangmu belum cukup! 💪🌟");
     await update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: child.stars - cost });
     await update(ref(db, `users/${user.uid}/rewards/${rewardId}`), { isClaimed: true });
+    triggerCelebration('reward');
   };
 
-  const handleAddProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profileForm.name || !user) return;
-    await push(ref(db, `users/${user.uid}/profiles`), { 
-      name: profileForm.name, role: profileForm.role || 'Anak', 
-      stars: 0, maxStars: Number(profileForm.maxStars), 
-      avatar: profileForm.avatar, theme: profileForm.theme,
-      streak: 0, lastStreakDate: ''
-    });
-    setProfileForm({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
-    setShowChildForm(false);
-  };
-
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!taskForm.title || profiles.length === 0 || !user) return;
-    const baseTask = {
-      title: taskForm.title, type: taskForm.type,
-      recurrence: taskForm.type === 'Daily' ? taskForm.recurrence : 'none',
-      reward: Number(taskForm.reward), isDone: false, isApproved: false,
-    };
-    if (taskForm.assignedTo === 'all') {
-      profiles.forEach(async (p) => {
-        await push(ref(db, `users/${user.uid}/tasks`), { ...baseTask, assignedTo: p.id });
-      });
-    } else {
-      await push(ref(db, `users/${user.uid}/tasks`), { ...baseTask, assignedTo: taskForm.assignedTo });
-    }
-    setTaskForm({ ...taskForm, title: '', reward: 2 }); 
-    setShowTaskForm(false);
-  };
-
-  const handleAddReward = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rewardForm.title || profiles.length === 0 || !user) return;
-    const baseReward = {
-      title: rewardForm.title, cost: Number(rewardForm.cost),
-      isClaimed: false, isApproved: false,
-    };
-    if (rewardForm.assignedTo === 'all') {
-      profiles.forEach(async (p) => {
-        await push(ref(db, `users/${user.uid}/rewards`), { ...baseReward, assignedTo: p.id });
-      });
-    } else {
-      await push(ref(db, `users/${user.uid}/rewards`), { ...rewardForm, assignedTo: rewardForm.assignedTo });
-    }
-    setRewardForm({ ...rewardForm, title: '', cost: 10 });
-    setShowRewardForm(false);
-  };
-
-  // --- FUNGSI BARU: TOLAK MISI (REJECT TASK) ---
+  // --- LOGIKA TOLAK MISI ORTU ---
   const handleRejectTask = async (taskId: string) => {
     if (!user) return;
-    // Ubah isDone kembali ke false, jadi tugas akan aktif kembali di Mode Anak
+    // Mengubah isDone dan isApproved ke false, misi akan kembali ke HP Anak
     await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: false, isApproved: false });
   };
 
@@ -381,6 +316,7 @@ export default function App() {
     let currentStreak = child.streak || 0;
     let lastStreakDate = child.lastStreakDate || '';
 
+    // FIX STREAK DIMULAI DARI 0 KALAU BOLONG
     if (lastStreakDate !== todayStr && lastStreakDate !== yesterdayStr) {
       currentStreak = 0;
     }
@@ -393,42 +329,52 @@ export default function App() {
     const childTasks = tasks.filter(t => String(t.assignedTo) === String(child.id) && t.type === 'Daily');
     const totalDaily = childTasks.length;
     let approvedDaily = childTasks.filter(t => t.isApproved).length;
-    
     const thisTask = tasks.find(t => t.id === taskId);
     if (thisTask?.type === 'Daily') approvedDaily += 1; 
 
     if (totalDaily > 0 && (approvedDaily / totalDaily) >= 0.5) {
-      if (lastStreakDate !== todayStr) {
-        currentStreak += 1;
-        lastStreakDate = todayStr;
-      }
+      if (lastStreakDate !== todayStr) { currentStreak += 1; lastStreakDate = todayStr; }
     }
 
     await update(ref(db, `users/${user.uid}/profiles/${child.id}`), { 
-      stars: Math.min(child.stars + finalReward, child.maxStars),
-      streak: currentStreak,
-      lastStreakDate: lastStreakDate
+      stars: Math.min(child.stars + finalReward, child.maxStars), streak: currentStreak, lastStreakDate: lastStreakDate
     });
 
     const currentDailyStars = stats[childId]?.[todayStr] || 0;
     await update(ref(db, `users/${user.uid}/stats/${childId}`), { [todayStr]: currentDailyStars + finalReward });
   };
 
-  const handleApproveReward = async (rewardId: string) => {
-    if (!user) return;
-    await update(ref(db, `users/${user.uid}/rewards/${rewardId}`), { isApproved: true });
+  const handleApproveReward = async (rewardId: string) => { user && await update(ref(db, `users/${user.uid}/rewards/${rewardId}`), { isApproved: true }); };
+
+  const handleAddProfile = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!profileForm.name || !user) return;
+    await push(ref(db, `users/${user.uid}/profiles`), { 
+      name: profileForm.name, role: profileForm.role || 'Anak', stars: 0, maxStars: Number(profileForm.maxStars), avatar: profileForm.avatar, theme: profileForm.theme,
+      streak: 0, lastStreakDate: '', tickets: 0, lastTicketDate: ''
+    });
+    setProfileForm({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' }); setShowChildForm(false);
+  };
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!taskForm.title || profiles.length === 0 || !user) return;
+    const baseTask = { title: taskForm.title, type: taskForm.type, recurrence: taskForm.type === 'Daily' ? taskForm.recurrence : 'none', reward: Number(taskForm.reward), isDone: false, isApproved: false };
+    if (taskForm.assignedTo === 'all') profiles.forEach(async (p) => { await push(ref(db, `users/${user.uid}/tasks`), { ...baseTask, assignedTo: p.id }); });
+    else await push(ref(db, `users/${user.uid}/tasks`), { ...baseTask, assignedTo: taskForm.assignedTo });
+    setTaskForm({ ...taskForm, title: '', reward: 2 }); setShowTaskForm(false);
+  };
+  const handleAddReward = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!rewardForm.title || profiles.length === 0 || !user) return;
+    const baseReward = { title: rewardForm.title, cost: Number(rewardForm.cost), isClaimed: false, isApproved: false };
+    if (rewardForm.assignedTo === 'all') profiles.forEach(async (p) => { await push(ref(db, `users/${user.uid}/rewards`), { ...baseReward, assignedTo: p.id }); });
+    else await push(ref(db, `users/${user.uid}/rewards`), { ...rewardForm, assignedTo: rewardForm.assignedTo });
+    setRewardForm({ ...rewardForm, title: '', cost: 10 }); setShowRewardForm(false);
   };
 
   const startEditProfile = (profile: Profile) => { setEditingProfileId(profile.id); setEditProfileForm({ ...profile }); };
   const saveEditProfile = async () => {
     if (!editingProfileId || !user) return;
-    await update(ref(db, `users/${user.uid}/profiles/${editingProfileId}`), { 
-      name: editProfileForm.name || '', role: editProfileForm.role || '',
-      maxStars: Number(editProfileForm.maxStars || 50), avatar: editProfileForm.avatar || '👶', theme: editProfileForm.theme || 'from-pink-500 to-rose-400'
-    });
+    await update(ref(db, `users/${user.uid}/profiles/${editingProfileId}`), { name: editProfileForm.name || '', role: editProfileForm.role || '', maxStars: Number(editProfileForm.maxStars || 50), avatar: editProfileForm.avatar || '👶', theme: editProfileForm.theme || 'from-pink-500 to-rose-400' });
     setEditingProfileId(null);
   };
-
   const handleDeleteProfile = async (id: string) => {
     if (!user) return;
     if (window.confirm('Yakin menghapus akun ini beserta Misi dan Hadiahnya?')) {
@@ -441,25 +387,17 @@ export default function App() {
   const startEditTask = (task: Task) => { setEditingTaskId(task.id); setEditTaskForm({ ...task }); };
   const saveEditTask = async () => {
     if (!editingTaskId || !user) return;
-    const taskType = editTaskForm.type || 'Daily';
-    const taskRecurrence = taskType === 'Daily' ? (editTaskForm.recurrence || 'daily') : 'none';
-    await update(ref(db, `users/${user.uid}/tasks/${editingTaskId}`), { 
-      title: editTaskForm.title || '', reward: Number(editTaskForm.reward || 0), type: taskType,
-      recurrence: taskRecurrence, assignedTo: editTaskForm.assignedTo || ''
-    });
+    await update(ref(db, `users/${user.uid}/tasks/${editingTaskId}`), { title: editTaskForm.title || '', reward: Number(editTaskForm.reward || 0), type: editTaskForm.type || 'Daily', recurrence: (editTaskForm.type || 'Daily') === 'Daily' ? (editTaskForm.recurrence || 'daily') : 'none', assignedTo: editTaskForm.assignedTo || '' });
     setEditingTaskId(null);
   };
-  
   const handleDeleteTask = async (id: string) => { user && await remove(ref(db, `users/${user.uid}/tasks/${id}`)); };
+
   const startEditReward = (reward: Reward) => { setEditingRewardId(reward.id); setEditRewardForm({ ...reward }); };
   const saveEditReward = async () => {
     if (!editingRewardId || !user) return;
-    await update(ref(db, `users/${user.uid}/rewards/${editingRewardId}`), { 
-      title: editRewardForm.title || '', cost: Number(editRewardForm.cost || 0), assignedTo: editRewardForm.assignedTo || ''
-    });
+    await update(ref(db, `users/${user.uid}/rewards/${editingRewardId}`), { title: editRewardForm.title || '', cost: Number(editRewardForm.cost || 0), assignedTo: editRewardForm.assignedTo || '' });
     setEditingRewardId(null);
   };
-  
   const handleDeleteReward = async (id: string) => { user && await remove(ref(db, `users/${user.uid}/rewards/${id}`)); };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -468,54 +406,88 @@ export default function App() {
       if (isRegistering) {
         const res = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
         await update(ref(db, `users/${res.user.uid}`), { isPremium: false, email: res.user.email || '' });
-      } else {
-        await signInWithEmailAndPassword(auth, authEmail, authPassword);
-      }
+      } else await signInWithEmailAndPassword(auth, authEmail, authPassword);
       setAuthEmail(''); setAuthPassword('');
-    } catch (err: any) {
-      if (err.code === 'auth/weak-password') setAuthError('Password minimal 6 karakter, Bro.');
-      else if (err.code === 'auth/email-already-in-use') setAuthError('Email ini sudah kedaftar.');
-      else if (err.code === 'auth/invalid-credential') setAuthError('Email atau Password salah.');
-      else setAuthError(err.message);
-    }
+    } catch (err: any) { setAuthError(err.code === 'auth/weak-password' ? 'Password min 6 karakter.' : err.code === 'auth/email-already-in-use' ? 'Email kedaftar.' : err.code === 'auth/invalid-credential' ? 'Email/Pass salah.' : err.message); }
   };
-
   const handleForgotPassword = async () => {
-    if (!authEmail) return setAuthError('Ketik dulu email kamu di atas, baru klik tombol ini, Bro!');
-    setAuthError(''); setAuthSuccess('');
-    try {
-      await sendPasswordResetEmail(auth, authEmail);
-      setAuthSuccess('Tautan ganti password sudah dikirim ke email kamu! Cek inbox/spam ya.');
-    } catch (err: any) {
-      setAuthError('Gagal kirim email reset: ' + err.message);
-    }
+    if (!authEmail) return setAuthError('Ketik email di atas dulu!'); setAuthError(''); setAuthSuccess('');
+    try { await sendPasswordResetEmail(auth, authEmail); setAuthSuccess('Tautan reset terkirim!'); } catch (err: any) { setAuthError('Gagal: ' + err.message); }
   };
-
   const handleLogout = () => window.confirm('Keluar dari StarJar?') && signOut(auth);
 
   const getTaskLabel = (item: any) => {
-    if (!item) return '🔄 Rutinitas';
-    if (item.type === 'Achievement') return '🏆 Pencapaian';
-    if (item.recurrence === 'daily') return '🔄 Harian';
-    if (item.recurrence === 'weekly') return '🔄 Mingguan';
-    if (item.recurrence === 'monthly') return '🔄 Bulanan';
-    return '🔄 Rutinitas';
+    if (!item) return '🔄 Rutinitas'; if (item.type === 'Achievement') return '🏆 Pencapaian';
+    if (item.recurrence === 'daily') return '🔄 Harian'; if (item.recurrence === 'weekly') return '🔄 Mingguan'; if (item.recurrence === 'monthly') return '🔄 Bulanan'; return '🔄 Rutinitas';
   };
 
-  const toggleChildRoutine = (childId: string) => {
-    setChildRoutineOpen(prev => ({ ...prev, [childId]: !prev[childId] }));
-  };
-  const toggleChildAchieve = (childId: string) => {
-    setChildAchieveOpen(prev => ({ ...prev, [childId]: !prev[childId] }));
+  const toggleChildRoutine = (childId: string) => setChildRoutineOpen(prev => ({ ...prev, [childId]: !prev[childId] }));
+  const toggleChildAchieve = (childId: string) => setChildAchieveOpen(prev => ({ ...prev, [childId]: !prev[childId] }));
+
+  // --- LOGIKA SPIN GACHA ---
+  const handleSpinWheel = async () => {
+    if (!activeWheelChild || !user || isSpinning) return;
+    if ((activeWheelChild.tickets || 0) < 3) return alert("Tiket belum cukup! Kumpulkan 3 🎟️ dari misi harian pertama.");
+    
+    setIsSpinning(true);
+    playSound('spin');
+
+    // Potong 3 Tiket
+    await update(ref(db, `users/${user.uid}/profiles/${activeWheelChild.id}`), {
+      tickets: activeWheelChild.tickets - 3
+    });
+
+    const rand = Math.random() * 100;
+    let sum = 0, winningIndex = 0;
+    for (let i = 0; i < wheelPrizes.length; i++) {
+      sum += Number(wheelPrizes[i].prob);
+      if (rand <= sum) { winningIndex = i; break; }
+    }
+
+    // Hitung derajat putaran roda
+    const sliceDeg = 360 / wheelPrizes.length;
+    const centerDeg = (winningIndex * sliceDeg) + (sliceDeg / 2);
+    const newDegree = spinDegree + 1800 + (360 - centerDeg) - (spinDegree % 360);
+    setSpinDegree(newDegree);
+
+    setTimeout(async () => {
+      setIsSpinning(false);
+      const prize = wheelPrizes[winningIndex];
+      setSpinWinText(prize.label);
+      
+      // AUTO PENAMBAHAN BINTANG JIKA HADIAH TIPE "STAR"
+      if (prize.type === 'star') {
+        const todayStr = getLocalDateString(new Date());
+        const addedVal = Number(prize.val) || 0;
+        await update(ref(db, `users/${user.uid}/profiles/${activeWheelChild.id}`), {
+          stars: Math.min(activeWheelChild.stars + addedVal, activeWheelChild.maxStars)
+        });
+        const currentDailyStars = stats[activeWheelChild.id]?.[todayStr] || 0;
+        await update(ref(db, `users/${user.uid}/stats/${activeWheelChild.id}`), { [todayStr]: currentDailyStars + addedVal });
+        playSound('tada');
+      } else if (prize.type === 'reward') {
+        // AUTO MASUK LIST PERSETUJUAN ORTU JIKA HADIAH BARANG
+        await push(ref(db, `users/${user.uid}/rewards`), {
+          title: `Gacha: ${prize.val}`, cost: 0, isClaimed: true, isApproved: false, assignedTo: activeWheelChild.id
+        });
+        playSound('tada');
+      } else {
+        playSound('success'); 
+      }
+
+      setCelebration('spin_win');
+      setTimeout(() => {
+        setCelebration(null);
+        setActiveWheelChild(null);
+      }, 3500);
+
+    }, 4000);
   };
 
   if (loadingAuth || loadingPremium) {
     return (
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
-         <div className="text-center space-y-3">
-           <div className="text-6xl animate-spin">🌟</div>
-           <p className="animate-pulse font-sans tracking-normal">MEMUAT StarJar...</p>
-         </div>
+         <div className="text-center space-y-3"><div className="text-6xl animate-spin">🌟</div><p className="animate-pulse font-sans tracking-normal">MEMUAT StarJar...</p></div>
       </div>
     );
   }
@@ -523,52 +495,29 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center p-6 font-sans relative overflow-hidden">
-        
-        <div 
-          className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-          style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.35 }}
-        ></div>
-
+        <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none" style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.35 }}></div>
         <div className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl rounded-[2.5rem] border border-slate-700/50 p-10 shadow-2xl space-y-6 relative z-10">
           <div className="text-center space-y-2">
             <img src="/Icon Login.png" className="w-20 h-20 mx-auto object-contain transform hover:scale-110 transition-transform mb-1" alt="StarJar" />
             <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-400 tracking-tight">StarJar</h1>
             <p className="text-slate-400 text-sm">Aplikasi Toples Disiplin Anak Digital</p>
           </div>
-
           <form onSubmit={handleAuthSubmit} className="space-y-4">
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 block ml-2">Email Orang Tua</label>
-              <input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-400" placeholder="nama@email.com" />
-            </div>
-            
+            <div><label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 block ml-2">Email Orang Tua</label><input type="email" required value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-400" placeholder="nama@email.com" /></div>
             <div>
               <label className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 block ml-2">Password Akun</label>
               <div className="relative">
                 <input type={showPassword ? "text" : "password"} required value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-yellow-400 pr-12" placeholder="••••••••" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors text-sm">
-                  {showPassword ? "👁️" : "🙈"}
-                </button>
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors text-sm">{showPassword ? "👁️" : "🙈"}</button>
               </div>
             </div>
-
             {authError && <p className="text-xs text-red-400 font-bold text-center bg-red-500/10 p-2.5 rounded-xl border border-red-500/20">{authError}</p>}
             {authSuccess && <p className="text-xs text-green-400 font-bold text-center bg-green-500/10 p-2.5 rounded-xl border border-green-500/20">{authSuccess}</p>}
-
-            <button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:opacity-90 text-slate-950 font-black py-3.5 rounded-xl transition-all shadow-lg text-sm uppercase tracking-wider">
-              {isRegistering ? 'Buat Akun Keluarga' : 'Masuk Dashboard'}
-            </button>
+            <button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:opacity-90 text-slate-950 font-black py-3.5 rounded-xl transition-all shadow-lg text-sm uppercase tracking-wider">{isRegistering ? 'Buat Akun Keluarga' : 'Masuk Dashboard'}</button>
           </form>
-
           <div className="flex flex-col items-center justify-center gap-3 pt-4 border-t border-slate-700/50 text-xs">
-            <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-slate-300 hover:text-yellow-400 font-bold underline transition-colors">
-              {isRegistering ? 'Sudah punya akun? Masuk di sini' : 'Belum punya akun? Daftar Baru'}
-            </button>
-            {!isRegistering && (
-              <button type="button" onClick={handleForgotPassword} className="text-slate-500 hover:text-slate-300 transition-colors">
-                Lupa Password? Reset via Email
-              </button>
-            )}
+            <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-slate-300 hover:text-yellow-400 font-bold underline transition-colors">{isRegistering ? 'Sudah punya akun? Masuk di sini' : 'Belum punya akun? Daftar Baru'}</button>
+            {!isRegistering && (<button type="button" onClick={handleForgotPassword} className="text-slate-500 hover:text-slate-300 transition-colors">Lupa Password? Reset via Email</button>)}
           </div>
         </div>
       </div>
@@ -581,10 +530,7 @@ export default function App() {
         <div className="w-full max-w-md bg-slate-800/80 border border-slate-700 rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl">
           <span className="text-7xl block animate-bounce">🔒</span>
           <h2 className="text-2xl font-black text-white">Akun Anda Belum Aktif</h2>
-          <p className="text-slate-400 text-sm leading-relaxed">
-            Halo Ayah & Ibu! Terima kasih sudah mendaftar. Saat ini kami sedang mencocokkan data pendaftaran Anda dengan data invoice pembelian dari Lynk.id.
-            Mohon tunggu 5-10 menit ya, halaman ini akan terbuka otomatis secara realtime begitu aktivasi selesai oleh admin di database.
-          </p>
+          <p className="text-slate-400 text-sm leading-relaxed">Halo Ayah & Ibu! Terima kasih sudah mendaftar. Saat ini kami sedang mencocokkan data pendaftaran Anda dengan invoice pembelian. Mohon tunggu 5-10 menit.</p>
           <div className="pt-2">
             <div className="text-[11px] text-slate-500 animate-pulse font-medium">🛡️ Sinkronisasi aman dengan database Lynk.id...</div>
             <button type="button" onClick={handleLogout} className="text-xs text-slate-500 hover:text-red-400 transition-colors underline block mx-auto mt-6">🚪 Keluar / Ganti Akun</button>
@@ -597,17 +543,13 @@ export default function App() {
   const renderChildView = () => (
     <div className="space-y-12 w-full mx-auto animate-fade-in px-2 md:px-4">
       <header className="text-center space-y-4">
-        <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-400 to-cyan-400 tracking-tight drop-shadow-sm">
-          Misi Bintang Hari Ini! 🚀
-        </h1>
+        <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-400 to-cyan-400 tracking-tight drop-shadow-sm">Misi Bintang Hari Ini! 🚀</h1>
         <p className="text-slate-400 text-lg font-medium">Isi toplesmu dengan bintang kebaikan!</p>
       </header>
 
       {profiles.length === 0 && (
         <div className="text-center p-12 bg-slate-800/50 rounded-3xl border border-slate-700 max-w-6xl mx-auto">
-          <span className="text-6xl mb-4 block">👋</span>
-          <h2 className="text-2xl font-bold text-white mb-2">Belum ada profil Anak</h2>
-          <p className="text-slate-400">Ayah/Ibu perlu menambahkan profil anak di panel Ortu terlebih dahulu.</p>
+          <span className="text-6xl mb-4 block">👋</span><h2 className="text-2xl font-bold text-white mb-2">Belum ada profil Anak</h2><p className="text-slate-400">Ayah/Ibu perlu menambahkan profil anak di panel Ortu terlebih dahulu.</p>
         </div>
       )}
 
@@ -621,79 +563,82 @@ export default function App() {
 
           const isRoutineOpen = !!childRoutineOpen[profile.id];
           const isAchieveOpen = !!childAchieveOpen[profile.id];
-          
           const activeStreak = getActiveStreak(profile);
 
           return (
             <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
               
-              <div className="absolute top-5 right-5 flex flex-col items-center justify-center z-30">
-                 {activeStreak === 0 && <span className="text-2xl filter grayscale opacity-20" title="Belum ada streak">🌑</span>}
-                 {activeStreak === 1 && <span className="text-2xl filter drop-shadow-md" title="Streak 1 Hari">🔥</span>}
-                 {activeStreak === 2 && <span className="text-3xl filter drop-shadow-lg" title="Streak 2 Hari">🔥🔥</span>}
-                 {activeStreak === 3 && <span className="text-4xl filter drop-shadow-xl animate-pulse" title="Streak 3 Hari">🔥🔥🔥</span>}
+              {/* IKON TIKET GACHA (POJOK KIRI ATAS) */}
+              <div className="absolute top-5 left-5 z-30 flex flex-col items-center">
+                 <div className="bg-slate-900/80 border border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.3)] px-3 py-1.5 rounded-2xl flex items-center gap-1.5 transform hover:scale-105 transition-transform cursor-default">
+                    <span className="text-xl filter drop-shadow">🎟️</span>
+                    <span className="text-lg font-black text-yellow-400">{profile.tickets || 0}</span>
+                 </div>
+                 <span className="text-[8px] font-black text-slate-400 mt-1 uppercase tracking-wider">Tiket Gacha</span>
+              </div>
+
+              {/* LENCANA API STREAK (POJOK KANAN ATAS) */}
+              <div className="absolute top-5 right-5 z-30 flex flex-col items-center">
+                 {activeStreak === 0 && <span className="text-2xl filter grayscale opacity-20">🌑</span>}
+                 {activeStreak === 1 && <span className="text-2xl filter drop-shadow-md">🔥</span>}
+                 {activeStreak === 2 && <span className="text-3xl filter drop-shadow-lg">🔥🔥</span>}
+                 {activeStreak === 3 && <span className="text-4xl filter drop-shadow-xl animate-pulse">🔥🔥🔥</span>}
                  {activeStreak >= 4 && (
                    <div className="flex flex-col items-center transform scale-110 animate-bounce">
                      <span className="text-5xl filter drop-shadow-[0_0_20px_rgba(239,68,68,0.9)]">☄️💥</span>
                      <span className="bg-gradient-to-r from-red-600 to-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full mt-1 border border-yellow-300 shadow-lg">1.5x BONUS</span>
                    </div>
                  )}
-                 <span className="text-[8px] font-black text-slate-400 mt-1 uppercase tracking-wider">
-                   {activeStreak >= 4 ? 'MAX STREAK!' : `STREAK: ${activeStreak} HARI`}
-                 </span>
+                 <span className="text-[8px] font-black text-slate-400 mt-1 uppercase tracking-wider">{activeStreak >= 4 ? 'MAX STREAK!' : `STREAK: ${activeStreak} HARI`}</span>
               </div>
 
-              <div className="flex flex-col items-center justify-center text-center space-y-3 pt-2">
+              <div className="flex flex-col items-center justify-center text-center space-y-3 pt-4">
                 <div className={`p-4 rounded-3xl bg-gradient-to-br ${profile.theme} shadow-lg flex items-center justify-center min-w-[90px] min-h-[90px]`}>
                   <span className="text-5xl block filter drop-shadow">{profile.avatar}</span>
                 </div>
-                
-                <div>
-                  <h2 className="text-2xl font-black text-white">{profile.name}</h2>
-                  <span className="text-[10px] bg-slate-700/80 text-slate-300 font-black px-3 py-1 rounded-full uppercase tracking-wider mt-1 inline-block">{profile.role}</span>
-                </div>
+                <div><h2 className="text-2xl font-black text-white">{profile.name}</h2><span className="text-[10px] bg-slate-700/80 text-slate-300 font-black px-3 py-1 rounded-full uppercase tracking-wider mt-1 inline-block">{profile.role}</span></div>
 
                 <div className="relative w-40 h-56 bg-white/10 rounded-[2.5rem] border-4 border-white/20 shadow-[inset_0_4px_20px_rgba(255,255,255,0.1)] flex flex-col justify-end p-4 overflow-hidden mt-2">
-                  <div className="absolute top-0 left-0 right-0 h-5 bg-gradient-to-b from-black/20 to-transparent z-10 flex items-center justify-center">
-                    <div className="w-14 h-2 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div>
-                  </div>
-                  
+                  <div className="absolute top-0 left-0 right-0 h-5 bg-gradient-to-b from-black/20 to-transparent z-10 flex items-center justify-center"><div className="w-14 h-2 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div></div>
                   <div className="w-full rounded-b-[1.8rem] bg-gradient-to-t from-yellow-400 to-amber-500 transition-all duration-1000 relative shadow-[inset_0_2px_10px_rgba(255,255,255,0.3)]" style={{ height: `${fillPercentage}%` }}>
                     {fillPercentage > 5 && (
                       <div className="absolute inset-0 flex flex-wrap gap-1.5 p-2 items-end justify-center overflow-hidden animate-pulse">
-                        {Array.from({ length: Math.min(profile.stars, 10) }).map((_, i) => (
-                          <span key={i} className="text-lg filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transform rotate-12">⭐</span>
-                        ))}
+                        {Array.from({ length: Math.min(profile.stars, 10) }).map((_, i) => (<span key={i} className="text-lg filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transform rotate-12">⭐</span>))}
                       </div>
                     )}
                   </div>
                   <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
-                    <span className="text-4xl font-black text-white filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.7)]">{profile.stars}</span>
-                    <span className="text-[9px] font-black text-white/90 filter drop-shadow uppercase tracking-widest mt-0.5">/ {profile.maxStars} Bintang</span>
+                    <span className="text-4xl font-black text-white filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.7)]">{profile.stars}</span><span className="text-[9px] font-black text-white/90 filter drop-shadow uppercase tracking-widest mt-0.5">/ {profile.maxStars} Bintang</span>
                   </div>
                 </div>
               </div>
 
+              {/* TOMBOL PANGGIL RODA GACHA! */}
+              <div className="w-full mt-2">
+                 <button 
+                   onClick={() => setActiveWheelChild(profile)}
+                   className="w-full relative overflow-hidden bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-4 rounded-2xl shadow-[0_4px_20px_rgba(192,38,211,0.4)] transition-all active:scale-95 group border border-purple-400/50"
+                 >
+                   <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20"></div>
+                   <span className="relative z-10 flex items-center justify-center gap-2 text-sm tracking-wide">
+                     🎡 Putar Roda Gacha (3 🎟️)
+                   </span>
+                 </button>
+              </div>
+
               <div className="w-full flex flex-col gap-4 mt-2">
-                
                 <div className="bg-slate-900/50 border border-slate-700/60 rounded-2xl overflow-hidden">
                   <button onClick={() => toggleChildRoutine(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-slate-200">🔄 Rutinitas Harian</span>
-                      <span className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childRoutines.length}</span>
-                    </div>
+                    <div className="flex items-center gap-2"><span className="text-xs font-black text-slate-200">🔄 Rutinitas Harian</span><span className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childRoutines.length}</span></div>
                     <span className={`text-slate-400 text-xs font-black transform transition-transform duration-300 ${isRoutineOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
                   </button>
                   {isRoutineOpen && (
                     <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
                       {childRoutines.map(item => (
                         <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-white text-slate-900 shadow-sm gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p>
-                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 mt-1 inline-block">{getTaskLabel(item)}</span>
-                          </div>
-                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
-                            {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
+                          <div className="flex-1 min-w-0"><p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p><span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 mt-1 inline-block">{getTaskLabel(item)}</span></div>
+                          <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
+                            {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
                           </button>
                         </div>
                       ))}
@@ -704,22 +649,16 @@ export default function App() {
 
                 <div className="bg-slate-900/50 border border-slate-700/60 rounded-2xl overflow-hidden">
                   <button onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-slate-200">🏆 Misi Pencapaian</span>
-                      <span className="bg-pink-500/20 text-pink-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childAchievements.length}</span>
-                    </div>
+                    <div className="flex items-center gap-2"><span className="text-xs font-black text-slate-200">🏆 Misi Pencapaian</span><span className="bg-pink-500/20 text-pink-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childAchievements.length}</span></div>
                     <span className={`text-slate-400 text-xs font-black transform transition-transform duration-300 ${isAchieveOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
                   </button>
                   {isAchieveOpen && (
                     <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
                       {childAchievements.map(item => (
                         <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-white text-slate-900 shadow-sm gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p>
-                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-200 mt-1 inline-block">{getTaskLabel(item)}</span>
-                          </div>
-                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
-                            {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
+                          <div className="flex-1 min-w-0"><p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p><span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-200 mt-1 inline-block">{getTaskLabel(item)}</span></div>
+                          <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
+                            {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
                           </button>
                         </div>
                       ))}
@@ -731,11 +670,8 @@ export default function App() {
                 <div className="bg-slate-900/40 border border-slate-700/60 rounded-2xl p-3.5 space-y-3">
                   <div className="flex justify-between items-center border-b border-slate-700/60 pb-1.5">
                     <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">🎁 Tukar Hadiah Impian</span>
-                    <button type="button" onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="text-[10px] text-amber-400 font-black hover:underline bg-slate-800 px-2 py-0.5 rounded-md">
-                      {activeCatalogId === profile.id ? 'Tutup ✖️' : 'Buka Toko 🛒'}
-                    </button>
+                    <button type="button" onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="text-[10px] text-amber-400 font-black hover:underline bg-slate-800 px-2 py-0.5 rounded-md">{activeCatalogId === profile.id ? 'Tutup ✖️' : 'Buka Toko 🛒'}</button>
                   </div>
-                  
                   {activeCatalogId === profile.id && (
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1 animate-fade-in scrollbar-none">
                       {childRewards.map(r => (
@@ -750,7 +686,6 @@ export default function App() {
                     </div>
                   )}
                 </div>
-
               </div>
             </div>
           );
@@ -766,27 +701,17 @@ export default function App() {
     const completedTasks = tasks.filter(t => t.isApproved).length;
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-    const last7Days = Array.from({length: 7}).map((_, i) => {
-      const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d;
-    });
-    
-    const maxChartVal = Math.max(10, ...profiles.flatMap(p => 
-      last7Days.map(d => stats[p.id]?.[getLocalDateString(d)] || 0)
-    ));
+    const last7Days = Array.from({length: 7}).map((_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d; });
+    const maxChartVal = Math.max(10, ...profiles.flatMap(p => last7Days.map(d => stats[p.id]?.[getLocalDateString(d)] || 0)));
 
     return (
       <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative z-10">
         <header className="border-b border-slate-700 pb-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-white">Halo, Ayah & Ibu! 👋</h1>
-            <p className="text-slate-400 mt-2 text-sm">Pusat Kendali Aplikasi Keluarga.</p>
-          </div>
+          <div><h1 className="text-3xl font-black text-white">Halo, Ayah & Ibu! 👋</h1><p className="text-slate-400 mt-2 text-sm">Pusat Kendali Aplikasi Keluarga.</p></div>
           <div className="flex bg-slate-800 p-1 rounded-2xl border border-slate-700 overflow-x-auto flex-nowrap w-full md:w-auto scrollbar-none snap-x gap-1">
             <button type="button" onClick={() => setParentTab('stats')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'stats' ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📊 Statistik</button>
             <button type="button" onClick={() => setParentTab('history')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'history' ? 'bg-green-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📜 Riwayat</button>
-            <button type="button" onClick={() => setParentTab('approval')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'approval' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
-              🔔 Persetujuan {(pendingTasks.length > 0 || pendingRewards.length > 0) && <span className="ml-1 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">{pendingTasks.length + pendingRewards.length}</span>}
-            </button>
+            <button type="button" onClick={() => setParentTab('approval')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'approval' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>🔔 Persetujuan {(pendingTasks.length > 0 || pendingRewards.length > 0) && <span className="ml-1 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">{pendingTasks.length + pendingRewards.length}</span>}</button>
             <button type="button" onClick={() => setParentTab('manage')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'manage' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>🛠️ Kelola Sistem</button>
           </div>
         </header>
@@ -794,82 +719,16 @@ export default function App() {
         {parentTab === 'stats' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
             <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl flex items-center justify-between">
-              <div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Seluruh Misi</p><h3 className="text-3xl font-black text-white mt-1">{totalTasks}</h3></div>
-              <span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">📋</span>
+              <div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Seluruh Misi</p><h3 className="text-3xl font-black text-white mt-1">{totalTasks}</h3></div><span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">📋</span>
             </div>
             <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl flex items-center justify-between">
-              <div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Misi Sukses Disetujui</p><h3 className="text-3xl font-black text-green-400 mt-1">{completedTasks}</h3></div>
-              <span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">⭐</span>
+              <div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Misi Sukses Disetujui</p><h3 className="text-3xl font-black text-green-400 mt-1">{completedTasks}</h3></div><span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">⭐</span>
             </div>
             <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl flex items-center justify-between">
-              <div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Rasio Konsistensi Anak</p><h3 className="text-3xl font-black text-indigo-400 mt-1">{completionRate}%</h3></div>
-              <span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">📈</span>
+              <div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Rasio Konsistensi Anak</p><h3 className="text-3xl font-black text-indigo-400 mt-1">{completionRate}%</h3></div><span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">📈</span>
             </div>
 
-            <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-6">
-              <h3 className="text-base font-bold text-slate-200">📈 Grafik Konsistensi Bintang (7 Hari Terakhir)</h3>
-              
-              {profiles.length === 0 ? (
-                <p className="text-xs text-slate-500 italic text-center py-4">Belum ada profil untuk direkam aktivitasnya.</p>
-              ) : (
-                <>
-                  <div className="w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                    <div className="min-w-[500px] h-56 relative pt-4 pr-4 pl-8">
-                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6 pl-8">
-                        {[1, 0.75, 0.5, 0.25, 0].map(multiplier => (
-                          <div key={multiplier} className="w-full border-t border-slate-700/50 flex items-center">
-                            <span className="text-[10px] text-slate-500 font-bold -ml-6 -mt-2 bg-slate-800 pr-1 absolute">
-                              {Math.round(maxChartVal * multiplier)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      <svg viewBox="0 0 600 200" className="w-full h-full overflow-visible preserve-3d" preserveAspectRatio="none">
-                        {profiles.map(p => {
-                          const xStep = 600 / 6;
-                          const points = last7Days.map((d, index) => {
-                            const dateStr = getLocalDateString(d);
-                            const val = stats[p.id]?.[dateStr] || 0;
-                            const x = index * xStep;
-                            const y = 200 - (val / maxChartVal) * 200;
-                            return `${x},${y}`;
-                          });
-                          const hexColor = getThemeHex(p.theme);
-                          return (
-                            <g key={p.id}>
-                              <polyline points={points.join(' ')} fill="none" stroke={hexColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-lg" />
-                              {points.map((pt, i) => {
-                                const [px, py] = pt.split(',');
-                                return <circle key={i} cx={px} cy={py} r="5" fill={hexColor} stroke="#1e293b" strokeWidth="2" />;
-                              })}
-                            </g>
-                          );
-                        })}
-                      </svg>
-                      
-                      <div className="absolute bottom-0 left-8 right-4 flex justify-between mt-2">
-                        {last7Days.map((d, i) => (
-                          <span key={i} className="text-[10px] font-bold text-slate-500 -ml-3">
-                            {d.toLocaleDateString('id-ID', { weekday: 'short' })}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-4 mt-2 justify-center border-t border-slate-700/50 pt-4">
-                    {profiles.map(p => (
-                      <div key={p.id} className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full shadow" style={{ backgroundColor: getThemeHex(p.theme) }}></div>
-                        <span className="text-xs text-slate-300 font-bold">{p.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
+            {/* TABUNGAN BINTANG REALTIME KEMBALI HADIR! */}
             <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-4">
               <h3 className="text-base font-bold text-slate-200">📊 Tabungan Bintang Anak Realtime</h3>
               {profiles.length === 0 && <p className="text-xs text-slate-500 italic text-center py-4">Belum ada riwayat tabungan anak.</p>}
@@ -890,41 +749,55 @@ export default function App() {
                 })}
               </div>
             </div>
+
+            <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-6">
+              <h3 className="text-base font-bold text-slate-200">📈 Grafik Konsistensi Bintang (7 Hari Terakhir)</h3>
+              {profiles.length === 0 ? (<p className="text-xs text-slate-500 italic text-center py-4">Belum ada profil untuk direkam aktivitasnya.</p>) : (
+                <>
+                  <div className="w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                    <div className="min-w-[500px] h-56 relative pt-4 pr-4 pl-8">
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6 pl-8">
+                        {[1, 0.75, 0.5, 0.25, 0].map(multiplier => (<div key={multiplier} className="w-full border-t border-slate-700/50 flex items-center"><span className="text-[10px] text-slate-500 font-bold -ml-6 -mt-2 bg-slate-800 pr-1 absolute">{Math.round(maxChartVal * multiplier)}</span></div>))}
+                      </div>
+                      <svg viewBox="0 0 600 200" className="w-full h-full overflow-visible preserve-3d" preserveAspectRatio="none">
+                        {profiles.map(p => {
+                          const xStep = 600 / 6; const points = last7Days.map((d, index) => { const dateStr = getLocalDateString(d); const val = stats[p.id]?.[dateStr] || 0; return `${index * xStep},${200 - (val / maxChartVal) * 200}`; });
+                          const hexColor = getThemeHex(p.theme);
+                          return (
+                            <g key={p.id}><polyline points={points.join(' ')} fill="none" stroke={hexColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-lg" />
+                              {points.map((pt, i) => { const [px, py] = pt.split(','); return <circle key={i} cx={px} cy={py} r="5" fill={hexColor} stroke="#1e293b" strokeWidth="2" />; })}
+                            </g>
+                          );
+                        })}
+                      </svg>
+                      <div className="absolute bottom-0 left-8 right-4 flex justify-between mt-2">{last7Days.map((d, i) => (<span key={i} className="text-[10px] font-bold text-slate-500 -ml-3">{d.toLocaleDateString('id-ID', { weekday: 'short' })}</span>))}</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-4 mt-2 justify-center border-t border-slate-700/50 pt-4">
+                    {profiles.map(p => (<div key={p.id} className="flex items-center gap-2"><div className="w-3 h-3 rounded-full shadow" style={{ backgroundColor: getThemeHex(p.theme) }}></div><span className="text-xs text-slate-300 font-bold">{p.name}</span></div>))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
 
         {parentTab === 'history' && (
           <div className="space-y-6 animate-fade-in">
             <div className="bg-slate-800 rounded-3xl p-6 md:p-8 border border-slate-700 shadow-xl">
-              <h2 className="text-xl font-black text-white mb-8 flex items-center gap-3">
-                <span className="bg-purple-500/20 text-purple-400 p-2 rounded-xl text-lg">📜</span> 
-                Riwayat Misi Besar (Pencapaian)
-              </h2>
-              
+              <h2 className="text-xl font-black text-white mb-8 flex items-center gap-3"><span className="bg-purple-500/20 text-purple-400 p-2 rounded-xl text-lg">📜</span> Riwayat Misi Besar (Pencapaian)</h2>
               {profiles.length === 0 && <p className="text-slate-500 text-sm">Belum ada data profil anak.</p>}
-              
               <div className="space-y-10">
                 {profiles.map(profile => {
                   const historyTasks = tasks.filter(t => String(t.assignedTo) === String(profile.id) && t.type === 'Achievement' && t.isApproved);
                   return (
                     <div key={profile.id} className="relative">
-                      <div className="flex items-center gap-3 mb-4 border-b border-slate-700/60 pb-3">
-                        <div className={`p-2 rounded-xl bg-gradient-to-br ${profile.theme} shadow-lg`}>
-                          <span className="text-xl block filter drop-shadow">{profile.avatar}</span>
-                        </div>
-                        <h3 className="text-lg font-black text-white">{profile.name}</h3>
-                      </div>
-                      
-                      {historyTasks.length === 0 ? (
-                        <p className="text-slate-500 text-xs font-medium italic pl-[3.25rem]">Belum ada pencapaian besar yang berhasil diselesaikan.</p>
-                      ) : (
+                      <div className="flex items-center gap-3 mb-4 border-b border-slate-700/60 pb-3"><div className={`p-2 rounded-xl bg-gradient-to-br ${profile.theme} shadow-lg`}><span className="text-xl block filter drop-shadow">{profile.avatar}</span></div><h3 className="text-lg font-black text-white">{profile.name}</h3></div>
+                      {historyTasks.length === 0 ? (<p className="text-slate-500 text-xs font-medium italic pl-[3.25rem]">Belum ada pencapaian besar yang berhasil diselesaikan.</p>) : (
                         <div className="space-y-3 pl-[3.25rem]">
                           {historyTasks.map(task => (
                             <div key={task.id} className="flex justify-between items-center bg-slate-900/60 p-4 rounded-2xl border border-slate-700 shadow-sm hover:border-slate-600 transition-colors">
-                              <div>
-                                <p className="text-sm font-bold text-slate-200">{task.title}</p>
-                                <span className="text-[10px] text-green-400 font-black mt-1 inline-block uppercase tracking-wider bg-green-500/10 px-2 py-0.5 rounded-md">✓ Sukses & Disetujui</span>
-                              </div>
+                              <div><p className="text-sm font-bold text-slate-200">{task.title}</p><span className="text-[10px] text-green-400 font-black mt-1 inline-block uppercase tracking-wider bg-green-500/10 px-2 py-0.5 rounded-md">✓ Sukses & Disetujui</span></div>
                               <span className="text-xl font-black text-yellow-400 drop-shadow-md">+{task.reward} <span className="text-sm">⭐</span></span>
                             </div>
                           ))}
@@ -946,27 +819,17 @@ export default function App() {
               <div className="space-y-3">
                 {pendingTasks.map(task => {
                   const child = profiles.find(p => String(p.id) === String(task.assignedTo));
-                  
-                  const currentChildStreak = child ? getActiveStreak(child) : 0;
-                  const isMultiplier = currentChildStreak >= 4;
-                  const displayReward = Math.ceil(task.reward * (isMultiplier ? 1.5 : 1));
-
+                  const currentChildStreak = child ? getActiveStreak(child) : 0; const isMultiplier = currentChildStreak >= 4; const displayReward = Math.ceil(task.reward * (isMultiplier ? 1.5 : 1));
                   return (
                     <div key={task.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 rounded-2xl bg-slate-900 border border-slate-700 gap-4">
                       <div>
-                        <p className="text-slate-400 text-xs">{child?.name || 'Anak'} menyelesaikan:</p>
-                        <p className="text-base font-bold text-white">{task.title}</p>
+                        <p className="text-slate-400 text-xs">{child?.name || 'Anak'} menyelesaikan:</p><p className="text-base font-bold text-white">{task.title}</p>
                         {isMultiplier && <span className="text-[10px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-2 py-0.5 rounded-md mt-1 inline-block animate-pulse shadow-md">🔥 BONUS 1.5X AKTIF</span>}
                       </div>
-                      
-                      {/* FIX: TOMBOL TOLAK DITAMBAHKAN DI SEBELAH TOMBOL SETUJUI */}
                       <div className="flex gap-2 w-full sm:w-auto">
-                        <button type="button" onClick={() => handleRejectTask(task.id)} className="flex-1 sm:flex-none bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-sm whitespace-nowrap">
-                          Tolak ✖️
-                        </button>
-                        <button type="button" onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className={`flex-1 sm:flex-none ${isMultiplier ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900' : 'bg-green-500 hover:bg-green-400 text-slate-900'} font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-md whitespace-nowrap`}>
-                          Setujui +{displayReward}⭐
-                        </button>
+                        {/* TOMBOL TOLAK MISI TETAP ADA */}
+                        <button type="button" onClick={() => handleRejectTask(task.id)} className="flex-1 sm:flex-none bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-sm whitespace-nowrap">Tolak ✖️</button>
+                        <button type="button" onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className={`flex-1 sm:flex-none ${isMultiplier ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900' : 'bg-green-500 hover:bg-green-400 text-slate-900'} font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-md whitespace-nowrap`}>Setujui +{displayReward}⭐</button>
                       </div>
                     </div>
                   );
@@ -994,10 +857,10 @@ export default function App() {
 
         {parentTab === 'manage' && (
           <div className="space-y-6 animate-fade-in">
+            {/* Form Tambah Anak */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowChildForm(!showChildForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
-                <span className="text-lg font-bold text-white flex items-center gap-2">👶 Tambah / Urus Akun Profil Anak</span>
-                <span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showChildForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                <span className="text-lg font-bold text-white flex items-center gap-2">👶 Tambah / Urus Akun Profil Anak</span><span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showChildForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
               </button>
               {showChildForm && (
                 <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-6 animate-fade-in">
@@ -1014,7 +877,6 @@ export default function App() {
                     </div>
                     <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-3 rounded-xl transition-all shadow-md">+ Tambah Profil</button>
                   </form>
-
                   <div className="space-y-3">
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider ml-1">Daftar Anak Terdaftar:</h3>
                     {profiles.map(p => (
@@ -1025,84 +887,55 @@ export default function App() {
                               <input type="text" className="flex-1 bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editProfileForm.name || ''} onChange={e => setEditProfileForm({...editProfileForm, name: e.target.value})} placeholder="Nama" />
                               <input type="text" className="flex-1 bg-slate-800 border border-slate-600 p-2 rounded-lg text-white" value={editProfileForm.role || ''} onChange={e => setEditProfileForm({...editProfileForm, role: e.target.value})} placeholder="Role" />
                             </div>
-                            <div className="flex gap-2">
-                              <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Target Maks</label><input type="number" className="w-full bg-slate-900 border border-slate-600 p-2 rounded-lg text-yellow-400 font-bold text-center" value={editProfileForm.maxStars || 50} onChange={e => setEditProfileForm({...editProfileForm, maxStars: Number(e.target.value)})} /></div>
-                              <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Avatar</label><select value={editProfileForm.avatar || '👶'} onChange={e => setEditProfileForm({...editProfileForm, avatar: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm">{avatarOptions.map(av => <option key={av} value={av}>{av}</option>)}</select></div>
-                              <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Tema</label><select value={editProfileForm.theme || 'from-pink-500 to-rose-400'} onChange={e => setEditProfileForm({...editProfileForm, theme: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-sm">{themeOptions.map(th => <option key={th.value} value={th.value}>{th.label}</option>)}</select></div>
-                            </div>
                             <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50"><button type="button" onClick={() => setEditingProfileId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditProfile} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs shadow-md">Simpan</button></div>
                           </div>
                         ) : (
                           <div className="flex justify-between items-center text-sm">
-                            <div className="flex items-center gap-2"><span className="text-xl">{p.avatar}</span><span className="text-white font-bold">{p.name}</span><span className="text-slate-500 text-xs">({p.role})</span></div>
+                            <div className="flex items-center gap-2"><span className="text-xl">{p.avatar}</span><span className="text-white font-bold">{p.name}</span></div>
                             <div className="flex gap-3 text-xs font-bold"><button type="button" onClick={() => startEditProfile(p)} className="text-blue-400 hover:underline">Edit</button><button type="button" onClick={() => handleDeleteProfile(p.id)} className="text-red-400 hover:underline">Hapus</button></div>
                           </div>
                         )}
                       </div>
                     ))}
-                    {profiles.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic">Belum ada akun anak.</p>}
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Form Tambah Misi */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowTaskForm(!showTaskForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
-                <span className="text-lg font-bold text-white flex items-center gap-2">📋 Kelola & Tambah Misi Baru</span>
-                <span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showTaskForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                <span className="text-lg font-bold text-white flex items-center gap-2">📋 Kelola & Tambah Misi Baru</span><span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showTaskForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
               </button>
               {showTaskForm && (
                 <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-6 animate-fade-in">
                   <form onSubmit={handleAddTask} className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700">
                     <h3 className="text-sm font-black text-yellow-400 uppercase tracking-wider">Form Input Tugas / Misi:</h3>
-                    
                     <div>
+                      {/* DROPDOWN TEMPLATE MISI KEMBALI HADIR */}
                       <label className="text-xs text-amber-400 font-bold mb-1 block">💡 Gunakan Ide Misi Populer (Opsional):</label>
-                      <select 
-                        onChange={(e) => {
-                          const selected = MISSION_TEMPLATES.find(m => m.id === e.target.value);
-                          if (selected) {
-                            setTaskForm({ ...taskForm, title: selected.title, reward: selected.points });
-                          }
-                        }}
-                        className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-4 py-2.5 text-xs font-medium text-amber-300 focus:outline-none focus:border-amber-400 cursor-pointer"
-                      >
+                      <select onChange={(e) => { const selected = MISSION_TEMPLATES.find(m => m.id === e.target.value); if (selected) { setTaskForm({ ...taskForm, title: selected.title, reward: selected.points }); } }} className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-4 py-2.5 text-xs font-medium text-amber-300 focus:outline-none focus:border-amber-400 cursor-pointer">
                         <option value="">-- Ketuk cepat untuk pilih template otomatis --</option>
                         {Array.from(new Set(MISSION_TEMPLATES.map(m => m.category))).map(cat => (
                           <optgroup key={cat} label={cat} className="bg-slate-900 text-amber-500 font-bold">
                             {MISSION_TEMPLATES.filter(m => m.category === cat).map(m => (
-                              <option key={m.id} value={m.id} className="text-slate-200 font-sans">
-                                {m.title} (+{m.points} ⭐)
-                              </option>
+                              <option key={m.id} value={m.id} className="text-slate-200 font-sans">{m.title} (+{m.points} ⭐)</option>
                             ))}
                           </optgroup>
                         ))}
                       </select>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Tugaskan Untuk Anak:</label>
-                        <select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-bold">
-                          <option value="all">🌟 Semua Anak</option>
-                          {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Nama Misi / Tugas</label>
-                        <input type="text" placeholder="Contoh: Merapikan Tempat Tidur" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 font-medium" />
-                      </div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Tugaskan Untuk Anak:</label><select value={taskForm.assignedTo} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-bold"><option value="all">🌟 Semua Anak</option>{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Nama Misi / Tugas</label><input type="text" placeholder="Merapikan Tempat Tidur" required value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-medium" /></div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div><label className="text-xs text-slate-400 mb-1 block">Jenis Misi</label><select value={taskForm.type} onChange={e => setTaskForm({...taskForm, type: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-medium"><option value="Daily">🔄 Rutinitas Berulang</option><option value="Achievement">🏆 Tantangan Spesifik</option></select></div>
-                      {taskForm.type === 'Daily' && (
-                        <div><label className="text-xs text-slate-400 mb-1 block">Siklus Reset</label><select value={taskForm.recurrence} onChange={e => setTaskForm({...taskForm, recurrence: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer font-medium"><option value="daily">🔄 Harian (Reset Tiap Malam)</option><option value="weekly">🔄 Mingguan (Reset Tiap Senin)</option><option value="monthly">🔄 Bulanan (Reset Ganti Bulan)</option></select></div>
-                      )}
-                      <div><label className="text-xs text-slate-400 mb-1 block">Upah Hadiah Bintang</label><input type="number" required value={taskForm.reward} onChange={e => setTaskForm({...taskForm, reward: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-center font-bold text-yellow-400" /></div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Jenis Misi</label><select value={taskForm.type} onChange={e => setTaskForm({...taskForm, type: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-medium"><option value="Daily">🔄 Rutinitas Berulang</option><option value="Achievement">🏆 Tantangan Spesifik</option></select></div>
+                      {taskForm.type === 'Daily' && (<div><label className="text-xs text-slate-400 mb-1 block">Siklus Reset</label><select value={taskForm.recurrence} onChange={e => setTaskForm({...taskForm, recurrence: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-medium"><option value="daily">🔄 Harian</option><option value="weekly">🔄 Mingguan</option><option value="monthly">🔄 Bulanan</option></select></div>)}
+                      <div><label className="text-xs text-slate-400 mb-1 block">Upah Hadiah Bintang</label><input type="number" required value={taskForm.reward} onChange={e => setTaskForm({...taskForm, reward: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-yellow-400 font-bold text-center" /></div>
                     </div>
-                    <button type="submit" className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-bold px-4 py-3 rounded-xl transition-all">+ Tambah Misi</button>
+                    <button type="submit" className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-3 rounded-xl">+ Tambah Misi</button>
                   </form>
-
                   <div className="space-y-3">
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider ml-1">Daftar Misi Aktif Sekarang:</h3>
                     {tasks.map(t => {
@@ -1111,116 +944,111 @@ export default function App() {
                         <div key={t.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60">
                           {editingTaskId === t.id ? (
                             <div className="space-y-3 text-xs animate-fade-in">
-                              <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editTaskForm.title || ''} onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})} placeholder="Judul Misi" />
-                              <div className="flex gap-2">
-                                <div className="w-1/3"><label className="text-[10px] text-slate-400 uppercase">Upah</label><input type="number" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-yellow-400 font-bold text-center" value={editTaskForm.reward || 0} onChange={e => setEditTaskForm({...editTaskForm, reward: Number(e.target.value)})} /></div>
-                                <div className="w-2/3"><label className="text-[10px] text-slate-400 uppercase">Penerima</label><select value={editTaskForm.assignedTo || ''} onChange={e => setEditTaskForm({...editTaskForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1.5 text-white text-xs">{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                              </div>
-                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50"><button type="button" onClick={() => setEditingTaskId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditTask} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs shadow-md">Simpan</button></div>
+                              <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editTaskForm.title || ''} onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})} />
+                              <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setEditingTaskId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditTask} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs">Simpan</button></div>
                             </div>
                           ) : (
                             <div className="flex justify-between items-center text-sm gap-3">
-                              <div><p className="font-bold text-white">{t.title} <span className="text-yellow-400 text-xs ml-1">(+{t.reward}⭐)</span></p><p className="text-[11px] text-slate-500 mt-0.5">Pemilik: <span className="text-slate-300 font-medium">{child?.name || 'Umum'}</span> | Tipe: <span className="text-slate-400">{getTaskLabel(t)}</span></p></div>
+                              <div><p className="font-bold text-white">{t.title} <span className="text-yellow-400 text-xs ml-1">(+{t.reward}⭐)</span></p><p className="text-[11px] text-slate-500 mt-0.5">Pemilik: <span className="text-slate-300 font-medium">{child?.name || 'Umum'}</span></p></div>
                               <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => startEditTask(t)} className="text-blue-400 hover:underline">Edit</button><button type="button" onClick={() => handleDeleteTask(t.id)} className="text-red-400 hover:underline">Hapus</button></div>
                             </div>
                           )}
                         </div>
                       );
                     })}
-                    {tasks.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic">Belum ada daftar tugas harian.</p>}
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Form Tambah Hadiah */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowRewardForm(!showRewardForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
-                <span className="text-lg font-bold text-white flex items-center gap-2">🎁 Tambah Hadiah Baru</span>
-                <span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showRewardForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                <span className="text-lg font-bold text-white flex items-center gap-2">🎁 Tambah Hadiah Baru</span><span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showRewardForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
               </button>
               {showRewardForm && (
                 <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-6 animate-fade-in">
                   <form onSubmit={handleAddReward} className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700">
                     <h3 className="text-sm font-black text-rose-400 uppercase tracking-wider">Form Input Reward Katalog:</h3>
-                    
                     <div>
+                      {/* DROPDOWN TEMPLATE HADIAH KEMBALI HADIR */}
                       <label className="text-xs text-rose-400 font-bold mb-1 block">💡 Gunakan Ide Hadiah Populer (Opsional):</label>
-                      <select 
-                        onChange={(e) => {
-                          const selected = REWARD_TEMPLATES.find(r => r.id === e.target.value);
-                          if (selected) {
-                            setRewardForm({ ...rewardForm, title: selected.title, cost: selected.points });
-                          }
-                        }}
-                        className="w-full bg-slate-900 border border-rose-500/40 rounded-xl px-4 py-2.5 text-xs font-medium text-rose-300 focus:outline-none focus:border-rose-400 cursor-pointer"
-                      >
+                      <select onChange={(e) => { const selected = REWARD_TEMPLATES.find(r => r.id === e.target.value); if (selected) { setRewardForm({ ...rewardForm, title: selected.title, cost: selected.points }); } }} className="w-full bg-slate-900 border border-rose-500/40 rounded-xl px-4 py-2.5 text-xs text-rose-300 font-medium">
                         <option value="">-- Ketuk cepat untuk pilih template otomatis --</option>
                         {Array.from(new Set(REWARD_TEMPLATES.map(r => r.category))).map(cat => (
                           <optgroup key={cat} label={cat} className="bg-slate-900 text-rose-500 font-bold">
                             {REWARD_TEMPLATES.filter(r => r.category === cat).map(r => (
-                              <option key={r.id} value={r.id} className="text-slate-200 font-sans">
-                                {r.title} (Biaya: {r.points} ⭐)
-                              </option>
+                              <option key={r.id} value={r.id} className="text-slate-200 font-sans">{r.title} (Biaya: {r.points} ⭐)</option>
                             ))}
                           </optgroup>
                         ))}
                       </select>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Untuk Anak:</label>
-                        <select value={rewardForm.assignedTo} onChange={e => setRewardForm({...rewardForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 cursor-pointer font-bold">
-                          <option value="all">🌟 Semua Anak</option>
-                          {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Nama Hadiah</label>
-                        <input type="text" placeholder="Contoh: Es Krim Rasa Cokelat" required value={rewardForm.title} onChange={e => setRewardForm({...rewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-orange-500 font-medium" />
-                      </div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Untuk Anak:</label><select value={rewardForm.assignedTo} onChange={e => setRewardForm({...rewardForm, assignedTo: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-bold"><option value="all">🌟 Semua Anak</option>{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                      <div><label className="text-xs text-slate-400 mb-1 block">Nama Hadiah</label><input type="text" placeholder="Es Krim" required value={rewardForm.title} onChange={e => setRewardForm({...rewardForm, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-medium" /></div>
                     </div>
-                    <div>
-                      <label className="text-xs text-slate-400 mb-1 block">Harga / Biaya Penukaran Bintang</label>
-                      <input type="number" required value={rewardForm.cost} onChange={e => setRewardForm({...rewardForm, cost: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-center font-bold text-yellow-400" />
-                    </div>
-                    <button type="submit" className="w-full bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold px-4 py-3 rounded-xl transition-all shadow-md">+ Tambah Katalog Hadiah</button>
+                    <div><label className="text-xs text-slate-400 mb-1 block">Biaya Bintang</label><input type="number" required value={rewardForm.cost} onChange={e => setRewardForm({...rewardForm, cost: Number(e.target.value)})} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-yellow-400 font-bold text-center" /></div>
+                    <button type="submit" className="w-full bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold px-4 py-3 rounded-xl shadow-md">+ Tambah Katalog Hadiah</button>
                   </form>
-
                   <div className="space-y-3">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider ml-1">Katalog Hadiah Aktif Sekarang:</h3>
-                    {rewards.map(r => {
-                      const child = profiles.find(p => String(p.id) === String(r.assignedTo));
-                      return (
-                        <div key={r.id} className="p-4 rounded-2xl border border-slate-700">
-                          {editingRewardId === r.id ? (
-                            <div className="space-y-3 text-xs animate-fade-in">
-                              <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editRewardForm.title || ''} onChange={e => setEditRewardForm({...editRewardForm, title: e.target.value})} placeholder="Nama Hadiah" />
-                              <div className="flex gap-2">
-                                <input type="number" className="w-24 bg-slate-800 border border-slate-600 p-2 rounded-lg text-yellow-400 font-bold text-center" value={editRewardForm.cost || 0} onChange={e => setEditRewardForm({...editRewardForm, cost: Number(e.target.value)})} />
-                                <select value={editRewardForm.assignedTo || ''} onChange={e => setEditRewardForm({...editRewardForm, assignedTo: e.target.value})} className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-2 text-white text-xs">{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                              </div>
-                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50"><button type="button" onClick={() => setEditingRewardId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditReward} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs shadow-md">Simpan</button></div>
-                            </div>
-                          ) : (
-                            <div className="flex justify-between items-center text-sm gap-3">
-                              <div><p className="font-bold text-slate-200">{r.title} <span className="text-amber-400 text-xs ml-1">({r.cost} ⭐)</span></p><p className="text-[11px] text-slate-600 mt-0.5">Khusus: <span className="text-slate-400 font-medium">{child?.name || 'Semua Anak'}</span> {r.isApproved && <span className="text-green-500 font-bold ml-2">✓ Sudah Diserahkan</span>}</p></div>
-                              <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => startEditReward(r)} className="text-blue-400 hover:underline">Edit</button><button type="button" onClick={() => handleDeleteReward(r.id)} className="text-red-400 hover:underline">Hapus</button></div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {rewards.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic">Belum ada daftar katalog hadiah.</p>}
+                    {rewards.map(r => (
+                      <div key={r.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60 flex justify-between items-center text-sm">
+                         <div><p className="font-bold text-slate-200">{r.title} <span className="text-amber-400 text-xs ml-1">({r.cost} ⭐)</span></p></div>
+                         <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => handleDeleteReward(r.id)} className="text-red-400 hover:underline">Hapus</button></div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="pt-6 border-t border-slate-700/40 flex justify-center">
-              <button type="button" onClick={handleLogout} className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-black rounded-xl text-xs uppercase tracking-wider transition-all">
-                🚪 Keluar Akun StarJar
+            {/* PENGATURAN RODA GACHA (FITUR BARU UNTUK ORTU) */}
+            <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
+              <button type="button" onClick={() => setShowWheelForm(!showWheelForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
+                <span className="text-lg font-bold text-white flex items-center gap-2">🎡 Pengaturan Roda Gacha (Lucky Spin)</span>
+                <span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showWheelForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
               </button>
+              {showWheelForm && (
+                <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-4 animate-fade-in">
+                  <p className="text-xs text-slate-400 mb-2">Edit potongan roda. Tipe <strong>"+ Bintang"</strong> otomatis menambah bintang anak, <strong>"Hadiah/Barang"</strong> masuk daftar persetujuan Ortu, <strong>"Zonk"</strong> hanya memunculkan ucapan.</p>
+                  <div className="space-y-3">
+                    {wheelPrizes.map((wp, i) => (
+                      <div key={i} className="flex flex-col md:flex-row gap-2 bg-slate-900/40 p-3 rounded-xl border border-slate-700">
+                         <div className="flex-1">
+                           <label className="text-[10px] text-slate-400">Teks Hadiah</label>
+                           <input type="text" value={wp.label} onChange={e => { const newP = [...wheelPrizes]; newP[i].label = e.target.value; setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs" />
+                         </div>
+                         <div className="w-full md:w-1/5">
+                           <label className="text-[10px] text-slate-400">Tipe</label>
+                           <select value={wp.type} onChange={e => { const newP = [...wheelPrizes]; newP[i].type = e.target.value; setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs">
+                             <option value="star">+ Bintang</option>
+                             <option value="reward">Hadiah/Barang</option>
+                             <option value="zonk">Zonk/Ucapan</option>
+                           </select>
+                         </div>
+                         <div className="w-full md:w-1/5">
+                           <label className="text-[10px] text-slate-400">Nilai (Angka/Teks)</label>
+                           <input type="text" value={wp.val} onChange={e => { const newP = [...wheelPrizes]; newP[i].val = e.target.value; setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs" />
+                         </div>
+                         <div className="w-full md:w-1/6">
+                           <label className="text-[10px] text-slate-400">Peluang (%)</label>
+                           <input type="number" value={wp.prob} onChange={e => { const newP = [...wheelPrizes]; newP[i].prob = Number(e.target.value); setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs text-center" />
+                         </div>
+                         <div className="w-full md:w-[60px]">
+                           <label className="text-[10px] text-slate-400">Warna</label>
+                           <input type="color" value={wp.color} onChange={e => { const newP = [...wheelPrizes]; newP[i].color = e.target.value; setWheelPrizes(newP); }} className="w-full h-8 cursor-pointer rounded-lg border border-slate-600 p-0.5 bg-slate-800" />
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={async () => { await update(ref(db, `users/${user.uid}`), { wheelPrizes }); alert("Pengaturan Roda berhasil disimpan!"); }} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-3 rounded-xl shadow-md mt-4">💾 Simpan Pengaturan Roda</button>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-6 border-t border-slate-700/40 flex justify-center">
+              <button type="button" onClick={handleLogout} className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-black rounded-xl text-xs uppercase tracking-wider transition-all">🚪 Keluar Akun StarJar</button>
             </div>
           </div>
         )}
@@ -1231,29 +1059,87 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 font-sans pb-32 relative overflow-hidden">
       
-      {/* CUSTOM STYLE UNTUK BOUNCE YANG LEBIH HALUS/PENDEK */}
+      {/* ANIMASI SOFT BOUNCE */}
       <style>{`
-        @keyframes bounce-soft {
-          0%, 100% { transform: translateY(-8%); animation-timing-function: cubic-bezier(0.8,0,1,1); }
-          50% { transform: translateY(0); animation-timing-function: cubic-bezier(0,0,0.2,1); }
-        }
+        @keyframes bounce-soft { 0%, 100% { transform: translateY(-8%); animation-timing-function: cubic-bezier(0.8,0,1,1); } 50% { transform: translateY(0); animation-timing-function: cubic-bezier(0,0,0.2,1); } }
         .animate-bounce-soft { animation: bounce-soft 1.5s infinite; }
       `}</style>
 
-      <div 
-        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-        style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.15 }}
-      ></div>
+      <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none" style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.15 }}></div>
 
+      {/* --- OVERLAY POPUP ANIMASI --- */}
       {celebration && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none bg-slate-900/60 backdrop-blur-sm transition-opacity duration-500">
-          {celebration === 'reward' ? (
-            /* FIX: UKURAN GAMBAR HADIAH MENJADI 50vw DAN BOUNCE SOFT */
-            <img src="/Icon Hadiah.png" className="w-[50vw] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />
-          ) : (
-            /* FIX: IKON MENANG JUGA MENGGUNAKAN BOUNCE SOFT */
-            <img src="/Icon Menang.png" className="w-[75vw] max-w-[600px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none bg-slate-900/70 backdrop-blur-md transition-opacity duration-500">
+          
+          {/* ICON HADIAH MENGGUNAKAN .PNG */}
+          {celebration === 'reward' && <img src="/Icon Hadiah.png" className="w-[50vw] max-w-[400px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />}
+          
+          {celebration === 'task' && <img src="/Icon Menang.png" className="w-[50vw] max-w-[400px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />}
+          
+          {/* ANIMASI TIKET UNTUK MISI PERTAMA */}
+          {celebration === 'ticket' && (
+            <div className="flex flex-col items-center animate-bounce-soft">
+               <img src="/Icon Tiket.png" className="w-[40vw] max-w-[300px] h-auto drop-shadow-[0_0_40px_rgba(234,179,8,0.7)] object-contain" alt="Dapat Tiket!" />
+               <span className="text-yellow-400 font-black text-2xl mt-4 drop-shadow-md">+1 Tiket Harian!</span>
+            </div>
           )}
+          
+          {/* ANIMASI WIN GACHA */}
+          {celebration === 'spin_win' && (
+            <div className="flex flex-col items-center animate-bounce-soft text-center p-8 bg-slate-800/80 border-2 border-yellow-400 rounded-3xl shadow-[0_0_50px_rgba(234,179,8,0.5)]">
+               <span className="text-6xl mb-4">🎉</span>
+               <h2 className="text-3xl font-black text-white mb-2">Selamat!</h2>
+               <p className="text-xl font-bold text-yellow-400">{spinWinText}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- MODAL RODA GACHA / LUCKY SPIN --- */}
+      {activeWheelChild && !celebration && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/90 backdrop-blur-sm px-4">
+           <div className="bg-slate-800 p-8 rounded-[3rem] shadow-2xl border border-slate-700 w-full max-w-md flex flex-col items-center relative overflow-hidden">
+             <button onClick={() => !isSpinning && setActiveWheelChild(null)} className="absolute top-4 right-6 text-slate-400 hover:text-white font-bold text-xl z-20" disabled={isSpinning}>✖</button>
+             <div className="text-center mb-8 relative z-10">
+               <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">Gacha Bintang</h2>
+               <p className="text-sm text-slate-400 font-bold">Tiketmu: <span className="text-yellow-400">{activeWheelChild.tickets || 0} 🎟️</span></p>
+             </div>
+
+             {/* RODA PUTAR CSS/SVG */}
+             <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center mb-8">
+                {/* JARUM PENUNJUK (POINTER) */}
+                <div className="absolute -top-4 z-20 w-0 h-0 border-l-[15px] border-r-[15px] border-t-[35px] border-l-transparent border-r-transparent border-t-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]"></div>
+                {/* LINGKARAN RODA */}
+                <div 
+                  className="w-full h-full rounded-full relative overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] border-4 border-slate-700/80"
+                  style={{ 
+                    background: `conic-gradient(${wheelPrizes.map((p, i) => `${p.color} ${i * (360/wheelPrizes.length)}deg ${(i+1) * (360/wheelPrizes.length)}deg`).join(', ')})`,
+                    transform: `rotate(${spinDegree}deg)`,
+                    transition: 'transform 4s cubic-bezier(0.15,0.85,0.3,1)'
+                  }}
+                >
+                   {/* TEKS DI DALAM RODA */}
+                   {wheelPrizes.map((p, i) => {
+                     const sliceDeg = 360 / wheelPrizes.length;
+                     const rot = i * sliceDeg + (sliceDeg / 2);
+                     return (
+                       <div key={i} className="absolute inset-0 flex justify-center origin-center text-white font-black text-[10px] md:text-xs drop-shadow-md pt-4" style={{ transform: `rotate(${rot}deg)` }}>
+                         <span className="w-16 text-center leading-tight">{p.label}</span>
+                       </div>
+                     );
+                   })}
+                </div>
+                <div className="absolute z-10 w-12 h-12 bg-slate-800 rounded-full border-4 border-slate-600 shadow-inner"></div>
+             </div>
+
+             <button 
+               onClick={handleSpinWheel} 
+               disabled={isSpinning || (activeWheelChild.tickets || 0) < 3}
+               className={`w-full py-4 rounded-2xl font-black text-lg transition-all shadow-xl ${isSpinning || (activeWheelChild.tickets || 0) < 3 ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:scale-105 active:scale-95'}`}
+             >
+               {isSpinning ? 'Sedang Memutar...' : 'PUTAR (3 🎟️)'}
+             </button>
+           </div>
         </div>
       )}
 
