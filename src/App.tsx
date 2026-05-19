@@ -74,6 +74,8 @@ interface Profile {
   maxStars: number;
   avatar: string;
   theme: string;
+  streak: number;          // PENAMBAHAN FITUR STREAK
+  lastStreakDate: string;  // PENAMBAHAN FITUR STREAK
 }
 
 interface Task {
@@ -123,6 +125,16 @@ const getThemeHex = (theme: string) => {
   return '#cbd5e1'; 
 };
 
+// HELPER MENGAMBIL STREAK AKTIF SAAT INI
+const getActiveStreak = (profile: Profile) => {
+  const todayStr = getLocalDateString(new Date());
+  const yesterdayStr = getLocalDateString(new Date(Date.now() - 86400000));
+  if (profile.lastStreakDate === todayStr || profile.lastStreakDate === yesterdayStr) {
+    return profile.streak || 0;
+  }
+  return 0; // Jika bolong lebih dari kemarin, hangus!
+};
+
 export default function App() {
   const avatarOptions = ['👶', '👧', '👦', '👸', '🤴', '🦸‍♀️', '🦸‍♂️', '🥷', '🦁', '🐼', '🦊', '🐸'];
   const themeOptions = [
@@ -148,10 +160,7 @@ export default function App() {
 
   const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
   const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
-  
-  // PENAMBAHAN TAB "history" UNTUK RIWAYAT
   const [parentTab, setParentTab] = useState<'stats' | 'history' | 'approval' | 'manage'>('manage');
-  
   const [celebration, setCelebration] = useState<'task' | 'reward' | null>(null);
 
   const [showChildForm, setShowChildForm] = useState(false);
@@ -163,9 +172,10 @@ export default function App() {
 
   const playSound = (type: 'success' | 'tada') => {
     try {
+      // SOUND BARU UNTUK REWARD MENGGUNAKAN EFEK JACKPOT/BONUS
       const url = type === 'success' 
         ? 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3' 
-        : 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3'; 
+        : 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'; 
       const audio = new Audio(url);
       audio.play();
     } catch (e) { console.log(e); }
@@ -180,7 +190,7 @@ export default function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
-  const [stats, setStats] = useState<any>({}); // MENYIMPAN DATA GRAFIK 7 HARI
+  const [stats, setStats] = useState<any>({}); 
 
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editProfileForm, setEditProfileForm] = useState<Partial<Profile>>({});
@@ -193,9 +203,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoadingAuth(false);
-      if (!currentUser) {
-        setLoadingPremium(false);
-      }
+      if (!currentUser) { setLoadingPremium(false); }
     });
     return () => unsubscribe();
   }, []);
@@ -221,7 +229,9 @@ export default function App() {
         id: key, name: data[key].name || '', role: data[key].role || '',
         stars: typeof data[key].stars === 'number' ? data[key].stars : 0,
         maxStars: typeof data[key].maxStars === 'number' ? data[key].maxStars : 50,
-        avatar: data[key].avatar || '👶', theme: data[key].theme || 'from-pink-500 to-rose-400'
+        avatar: data[key].avatar || '👶', theme: data[key].theme || 'from-pink-500 to-rose-400',
+        streak: typeof data[key].streak === 'number' ? data[key].streak : 0,
+        lastStreakDate: data[key].lastStreakDate || ''
       } as Profile));
       setProfiles(pData);
     });
@@ -314,7 +324,8 @@ export default function App() {
     await push(ref(db, `users/${user.uid}/profiles`), { 
       name: profileForm.name, role: profileForm.role || 'Anak', 
       stars: 0, maxStars: Number(profileForm.maxStars), 
-      avatar: profileForm.avatar, theme: profileForm.theme 
+      avatar: profileForm.avatar, theme: profileForm.theme,
+      streak: 0, lastStreakDate: ''
     });
     setProfileForm({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
     setShowChildForm(false);
@@ -362,13 +373,49 @@ export default function App() {
     const child = profiles.find(p => p.id === childId);
     if (!child) return;
     
-    await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isApproved: true });
-    await update(ref(db, `users/${user.uid}/profiles/${childId}`), { stars: Math.min(child.stars + reward, child.maxStars) });
-
-    // MENYIMPAN DATA GRAFIK 7 HARI KETIKA DI-APPROVE
     const todayStr = getLocalDateString(new Date());
+    const yesterdayStr = getLocalDateString(new Date(Date.now() - 86400000));
+    
+    let currentStreak = child.streak || 0;
+    let lastStreakDate = child.lastStreakDate || '';
+
+    // 1. Cek apakah Streak hangus karena absen lebih dari 1 hari
+    if (lastStreakDate !== todayStr && lastStreakDate !== yesterdayStr) {
+      currentStreak = 0;
+    }
+
+    // 2. Terapkan Multiplier 1.5x jika streak anak >= 4 hari
+    const multiplier = currentStreak >= 4 ? 1.5 : 1;
+    const finalReward = Math.ceil(reward * multiplier);
+
+    // 3. Setujui Tugas
+    await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isApproved: true });
+
+    // 4. Evaluasi pencapaian 50% HARI INI
+    const childTasks = tasks.filter(t => String(t.assignedTo) === String(child.id) && t.type === 'Daily');
+    const totalDaily = childTasks.length;
+    let approvedDaily = childTasks.filter(t => t.isApproved).length;
+    
+    const thisTask = tasks.find(t => t.id === taskId);
+    if (thisTask?.type === 'Daily') approvedDaily += 1; // Tambah status dari tugas yang baru di-approve ini
+
+    // Jika berhasil nyentuh 50% di hari ini dan belum terhitung, naikkan level api streak
+    if (totalDaily > 0 && (approvedDaily / totalDaily) >= 0.5) {
+      if (lastStreakDate !== todayStr) {
+        currentStreak += 1;
+        lastStreakDate = todayStr;
+      }
+    }
+
+    // 5. Simpan Profile & Stat Harian
+    await update(ref(db, `users/${user.uid}/profiles/${child.id}`), { 
+      stars: Math.min(child.stars + finalReward, child.maxStars),
+      streak: currentStreak,
+      lastStreakDate: lastStreakDate
+    });
+
     const currentDailyStars = stats[childId]?.[todayStr] || 0;
-    await update(ref(db, `users/${user.uid}/stats/${childId}`), { [todayStr]: currentDailyStars + reward });
+    await update(ref(db, `users/${user.uid}/stats/${childId}`), { [todayStr]: currentDailyStars + finalReward });
   };
 
   const handleApproveReward = async (rewardId: string) => {
@@ -578,11 +625,30 @@ export default function App() {
 
           const isRoutineOpen = !!childRoutineOpen[profile.id];
           const isAchieveOpen = !!childAchieveOpen[profile.id];
+          
+          const activeStreak = getActiveStreak(profile);
 
           return (
             <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
               
-              <div className="flex flex-col items-center justify-center text-center space-y-3">
+              {/* LENCANA API STREAK POJOK KANAN ATAS */}
+              <div className="absolute top-5 right-5 flex flex-col items-center justify-center z-30">
+                 {activeStreak === 0 && <span className="text-2xl filter grayscale opacity-20" title="Belum ada streak">🌑</span>}
+                 {activeStreak === 1 && <span className="text-2xl filter drop-shadow-md" title="Streak 1 Hari">🔥</span>}
+                 {activeStreak === 2 && <span className="text-3xl filter drop-shadow-lg" title="Streak 2 Hari">🔥🔥</span>}
+                 {activeStreak === 3 && <span className="text-4xl filter drop-shadow-xl animate-pulse" title="Streak 3 Hari">🔥🔥🔥</span>}
+                 {activeStreak >= 4 && (
+                   <div className="flex flex-col items-center transform scale-110 animate-bounce">
+                     <span className="text-5xl filter drop-shadow-[0_0_20px_rgba(239,68,68,0.9)]">☄️💥</span>
+                     <span className="bg-gradient-to-r from-red-600 to-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full mt-1 border border-yellow-300 shadow-lg">1.5x BONUS</span>
+                   </div>
+                 )}
+                 <span className="text-[8px] font-black text-slate-400 mt-1 uppercase tracking-wider">
+                   {activeStreak >= 4 ? 'MAX STREAK!' : `STREAK: ${activeStreak} HARI`}
+                 </span>
+              </div>
+
+              <div className="flex flex-col items-center justify-center text-center space-y-3 pt-2">
                 <div className={`p-4 rounded-3xl bg-gradient-to-br ${profile.theme} shadow-lg flex items-center justify-center min-w-[90px] min-h-[90px]`}>
                   <span className="text-5xl block filter drop-shadow">{profile.avatar}</span>
                 </div>
@@ -592,7 +658,7 @@ export default function App() {
                   <span className="text-[10px] bg-slate-700/80 text-slate-300 font-black px-3 py-1 rounded-full uppercase tracking-wider mt-1 inline-block">{profile.role}</span>
                 </div>
 
-                <div className="relative w-40 h-56 bg-white/10 rounded-[2.5rem] border-4 border-white/20 shadow-[inset_0_4px_20px_rgba(255,255,255,0.1)] flex flex-col justify-end p-4 overflow-hidden">
+                <div className="relative w-40 h-56 bg-white/10 rounded-[2.5rem] border-4 border-white/20 shadow-[inset_0_4px_20px_rgba(255,255,255,0.1)] flex flex-col justify-end p-4 overflow-hidden mt-2">
                   <div className="absolute top-0 left-0 right-0 h-5 bg-gradient-to-b from-black/20 to-transparent z-10 flex items-center justify-center">
                     <div className="w-14 h-2 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div>
                   </div>
@@ -613,7 +679,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="w-full flex flex-col gap-4">
+              <div className="w-full flex flex-col gap-4 mt-2">
                 
                 <div className="bg-slate-900/50 border border-slate-700/60 rounded-2xl overflow-hidden">
                   <button onClick={() => toggleChildRoutine(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
@@ -705,11 +771,8 @@ export default function App() {
     const completedTasks = tasks.filter(t => t.isApproved).length;
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-    // Persiapan Data Chart Garis (7 Hari Terakhir)
     const last7Days = Array.from({length: 7}).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d;
+      const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d;
     });
     
     const maxChartVal = Math.max(10, ...profiles.flatMap(p => 
@@ -723,7 +786,6 @@ export default function App() {
             <h1 className="text-3xl font-black text-white">Halo, Ayah & Ibu! 👋</h1>
             <p className="text-slate-400 mt-2 text-sm">Pusat Kendali Aplikasi Keluarga.</p>
           </div>
-          {/* SCROLL HORIZONTAL BAR NAVIGASI AGAR RAPI DI HP */}
           <div className="flex bg-slate-800 p-1 rounded-2xl border border-slate-700 overflow-x-auto flex-nowrap w-full md:w-auto scrollbar-none snap-x gap-1">
             <button type="button" onClick={() => setParentTab('stats')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'stats' ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📊 Statistik</button>
             <button type="button" onClick={() => setParentTab('history')} className={`snap-center px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${parentTab === 'history' ? 'bg-green-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>📜 Riwayat</button>
@@ -749,7 +811,6 @@ export default function App() {
               <span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">📈</span>
             </div>
 
-            {/* GRAFIK KONSISTENSI 7 HARI MENGGUNAKAN SVG */}
             <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-6">
               <h3 className="text-base font-bold text-slate-200">📈 Grafik Konsistensi Bintang (7 Hari Terakhir)</h3>
               
@@ -759,8 +820,6 @@ export default function App() {
                 <>
                   <div className="w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                     <div className="min-w-[500px] h-56 relative pt-4 pr-4 pl-8">
-                      
-                      {/* Y Axis Grid Lines */}
                       <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6 pl-8">
                         {[1, 0.75, 0.5, 0.25, 0].map(multiplier => (
                           <div key={multiplier} className="w-full border-t border-slate-700/50 flex items-center">
@@ -781,9 +840,7 @@ export default function App() {
                             const y = 200 - (val / maxChartVal) * 200;
                             return `${x},${y}`;
                           });
-                          
                           const hexColor = getThemeHex(p.theme);
-
                           return (
                             <g key={p.id}>
                               <polyline points={points.join(' ')} fill="none" stroke={hexColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-lg" />
@@ -796,7 +853,6 @@ export default function App() {
                         })}
                       </svg>
                       
-                      {/* X Axis Labels */}
                       <div className="absolute bottom-0 left-8 right-4 flex justify-between mt-2">
                         {last7Days.map((d, i) => (
                           <span key={i} className="text-[10px] font-bold text-slate-500 -ml-3">
@@ -807,7 +863,6 @@ export default function App() {
                     </div>
                   </div>
                   
-                  {/* Legend Warna Anak */}
                   <div className="flex flex-wrap gap-4 mt-2 justify-center border-t border-slate-700/50 pt-4">
                     {profiles.map(p => (
                       <div key={p.id} className="flex items-center gap-2">
@@ -820,7 +875,6 @@ export default function App() {
               )}
             </div>
 
-            {/* TOTAL TABUNGAN TERKINI */}
             <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-4">
               <h3 className="text-base font-bold text-slate-200">📊 Tabungan Bintang Anak Realtime</h3>
               {profiles.length === 0 && <p className="text-xs text-slate-500 italic text-center py-4">Belum ada riwayat tabungan anak.</p>}
@@ -857,7 +911,6 @@ export default function App() {
               <div className="space-y-10">
                 {profiles.map(profile => {
                   const historyTasks = tasks.filter(t => String(t.assignedTo) === String(profile.id) && t.type === 'Achievement' && t.isApproved);
-                  
                   return (
                     <div key={profile.id} className="relative">
                       <div className="flex items-center gap-3 mb-4 border-b border-slate-700/60 pb-3">
@@ -898,10 +951,22 @@ export default function App() {
               <div className="space-y-3">
                 {pendingTasks.map(task => {
                   const child = profiles.find(p => String(p.id) === String(task.assignedTo));
+                  
+                  // CEK STREAK AKTIF ANAK BUAT NAMPILIN BONUS DI TOMBOL APPROVE
+                  const currentChildStreak = child ? getActiveStreak(child) : 0;
+                  const isMultiplier = currentChildStreak >= 4;
+                  const displayReward = Math.ceil(task.reward * (isMultiplier ? 1.5 : 1));
+
                   return (
-                    <div key={task.id} className="flex justify-between items-center p-4 rounded-2xl bg-slate-900 border border-slate-700">
-                      <div><p className="text-slate-400 text-xs">{child?.name || 'Anak'} menyelesaikan:</p><p className="text-base font-bold text-white">{task.title}</p></div>
-                      <button type="button" onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className="bg-green-500 hover:bg-green-400 text-slate-900 font-black px-4 py-2 rounded-xl text-sm transition-all shadow-md">Setujui +{task.reward}⭐</button>
+                    <div key={task.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 rounded-2xl bg-slate-900 border border-slate-700 gap-4">
+                      <div>
+                        <p className="text-slate-400 text-xs">{child?.name || 'Anak'} menyelesaikan:</p>
+                        <p className="text-base font-bold text-white">{task.title}</p>
+                        {isMultiplier && <span className="text-[10px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-2 py-0.5 rounded-md mt-1 inline-block animate-pulse shadow-md">🔥 BONUS 1.5X AKTIF</span>}
+                      </div>
+                      <button type="button" onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className={`${isMultiplier ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900' : 'bg-green-500 hover:bg-green-400 text-slate-900'} font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-md whitespace-nowrap`}>
+                        Setujui +{displayReward}⭐
+                      </button>
                     </div>
                   );
                 })}
@@ -928,7 +993,6 @@ export default function App() {
 
         {parentTab === 'manage' && (
           <div className="space-y-6 animate-fade-in">
-            {/* ACCORDION 1: KELOLA PROFIL ANAK */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowChildForm(!showChildForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">👶 Tambah / Urus Akun Profil Anak</span>
@@ -981,7 +1045,6 @@ export default function App() {
               )}
             </div>
 
-            {/* ACCORDION 2: TAMBAH MISI DENGAN TEMPLATE OTOMATIS */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowTaskForm(!showTaskForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">📋 Kelola & Tambah Misi Baru</span>
@@ -1069,7 +1132,6 @@ export default function App() {
               )}
             </div>
 
-            {/* ACCORDION 3: TAMBAH HADIAH REWARD DENGAN TEMPLATE OTOMATIS */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowRewardForm(!showRewardForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">🎁 Tambah Hadiah Baru</span>
@@ -1176,11 +1238,9 @@ export default function App() {
       {celebration && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none bg-slate-900/60 backdrop-blur-sm transition-opacity duration-500">
           {celebration === 'reward' ? (
-            <div className="text-9xl animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)]">
-              🎉🎁🎉
-            </div>
+            /* FIX: MENGGUNAKAN GAMBAR "Icon Hadiah.jpg" UNTUK ANIMASI KLAIM HADIAH */
+            <img src="/Icon Hadiah.png" className="w-[60vw] max-w-[400px] h-auto animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />
           ) : (
-            /* UKURAN IKON MENANG DIBUAT RAKSASA (75vw / Maks 600px) */
             <img src="/Icon Menang.png" className="w-[75vw] max-w-[600px] h-auto animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />
           )}
         </div>
