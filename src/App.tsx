@@ -47,7 +47,6 @@ const REWARD_TEMPLATES = [
   { id: 'r12', title: 'Tukar "Kupon Hadiah Misteri" (Gacha)', points: 10, category: '❓ Kupon Misteri' }
 ];
 
-// DEFAULT TEMPLATE HADIAH LUCKY SPIN (Nanti Disimpan di Database)
 const DEFAULT_WHEEL_PRIZES = [
   { label: 'Zonk! Coba Lagi', type: 'zonk', val: 0, color: '#ef4444', prob: 20 },
   { label: '+2 Bintang', type: 'star', val: 2, color: '#3b82f6', prob: 30 },
@@ -135,7 +134,6 @@ export default function App() {
   const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
   const [parentTab, setParentTab] = useState<'stats' | 'history' | 'approval' | 'manage'>('manage');
   
-  // STATE ANIMASI & GACHA
   const [celebration, setCelebration] = useState<'task' | 'reward' | 'ticket' | 'spin_win' | null>(null);
   const [spinWinText, setSpinWinText] = useState<string>('');
   const [activeWheelChild, setActiveWheelChild] = useState<Profile | null>(null);
@@ -265,7 +263,6 @@ export default function App() {
   const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: 'all' });
   const [rewardForm, setRewardForm] = useState({ title: '', cost: 10, assignedTo: 'all' });
 
-  // --- LOGIKA MISI & DAPAT TIKET GACHA ---
   const handleCompleteTask = async (taskId: string, childId: string) => {
     if (!user) return;
     const child = profiles.find(p => p.id === childId);
@@ -274,7 +271,6 @@ export default function App() {
     const todayStr = getLocalDateString(new Date());
     let gotTicket = false;
 
-    // Cek Tiket Harian: Hanya dapat 1 tiket di misi pertama setiap harinya
     if (child.lastTicketDate !== todayStr) {
       gotTicket = true;
       await update(ref(db, `users/${user.uid}/profiles/${childId}`), {
@@ -284,8 +280,6 @@ export default function App() {
     }
 
     await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: true });
-    
-    // Panggil Rantai Animasi
     triggerCelebration('task', gotTicket);
   };
 
@@ -298,10 +292,8 @@ export default function App() {
     triggerCelebration('reward');
   };
 
-  // --- LOGIKA TOLAK MISI ORTU ---
   const handleRejectTask = async (taskId: string) => {
     if (!user) return;
-    // Mengubah isDone dan isApproved ke false, misi akan kembali ke HP Anak
     await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: false, isApproved: false });
   };
 
@@ -316,7 +308,6 @@ export default function App() {
     let currentStreak = child.streak || 0;
     let lastStreakDate = child.lastStreakDate || '';
 
-    // FIX STREAK DIMULAI DARI 0 KALAU BOLONG
     if (lastStreakDate !== todayStr && lastStreakDate !== yesterdayStr) {
       currentStreak = 0;
     }
@@ -424,7 +415,6 @@ export default function App() {
   const toggleChildRoutine = (childId: string) => setChildRoutineOpen(prev => ({ ...prev, [childId]: !prev[childId] }));
   const toggleChildAchieve = (childId: string) => setChildAchieveOpen(prev => ({ ...prev, [childId]: !prev[childId] }));
 
-  // --- LOGIKA SPIN GACHA ---
   const handleSpinWheel = async () => {
     if (!activeWheelChild || !user || isSpinning) return;
     if ((activeWheelChild.tickets || 0) < 3) return alert("Tiket belum cukup! Kumpulkan 3 🎟️ dari misi harian pertama.");
@@ -432,7 +422,6 @@ export default function App() {
     setIsSpinning(true);
     playSound('spin');
 
-    // Potong 3 Tiket
     await update(ref(db, `users/${user.uid}/profiles/${activeWheelChild.id}`), {
       tickets: activeWheelChild.tickets - 3
     });
@@ -444,7 +433,6 @@ export default function App() {
       if (rand <= sum) { winningIndex = i; break; }
     }
 
-    // Hitung derajat putaran roda
     const sliceDeg = 360 / wheelPrizes.length;
     const centerDeg = (winningIndex * sliceDeg) + (sliceDeg / 2);
     const newDegree = spinDegree + 1800 + (360 - centerDeg) - (spinDegree % 360);
@@ -455,7 +443,6 @@ export default function App() {
       const prize = wheelPrizes[winningIndex];
       setSpinWinText(prize.label);
       
-      // AUTO PENAMBAHAN BINTANG JIKA HADIAH TIPE "STAR"
       if (prize.type === 'star') {
         const todayStr = getLocalDateString(new Date());
         const addedVal = Number(prize.val) || 0;
@@ -466,7 +453,6 @@ export default function App() {
         await update(ref(db, `users/${user.uid}/stats/${activeWheelChild.id}`), { [todayStr]: currentDailyStars + addedVal });
         playSound('tada');
       } else if (prize.type === 'reward') {
-        // AUTO MASUK LIST PERSETUJUAN ORTU JIKA HADIAH BARANG
         await push(ref(db, `users/${user.uid}/rewards`), {
           title: `Gacha: ${prize.val}`, cost: 0, isClaimed: true, isApproved: false, assignedTo: activeWheelChild.id
         });
@@ -568,7 +554,6 @@ export default function App() {
           return (
             <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
               
-              {/* IKON TIKET GACHA (POJOK KIRI ATAS) */}
               <div className="absolute top-5 left-5 z-30 flex flex-col items-center">
                  <div className="bg-slate-900/80 border border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.3)] px-3 py-1.5 rounded-2xl flex items-center gap-1.5 transform hover:scale-105 transition-transform cursor-default">
                     <span className="text-xl filter drop-shadow">🎟️</span>
@@ -577,7 +562,6 @@ export default function App() {
                  <span className="text-[8px] font-black text-slate-400 mt-1 uppercase tracking-wider">Tiket Gacha</span>
               </div>
 
-              {/* LENCANA API STREAK (POJOK KANAN ATAS) */}
               <div className="absolute top-5 right-5 z-30 flex flex-col items-center">
                  {activeStreak === 0 && <span className="text-2xl filter grayscale opacity-20">🌑</span>}
                  {activeStreak === 1 && <span className="text-2xl filter drop-shadow-md">🔥</span>}
@@ -613,16 +597,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* TOMBOL PANGGIL RODA GACHA! */}
               <div className="w-full mt-2">
-                 <button 
-                   onClick={() => setActiveWheelChild(profile)}
-                   className="w-full relative overflow-hidden bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-4 rounded-2xl shadow-[0_4px_20px_rgba(192,38,211,0.4)] transition-all active:scale-95 group border border-purple-400/50"
-                 >
+                 <button onClick={() => setActiveWheelChild(profile)} className="w-full relative overflow-hidden bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-4 rounded-2xl shadow-[0_4px_20px_rgba(192,38,211,0.4)] transition-all active:scale-95 group border border-purple-400/50">
                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20"></div>
-                   <span className="relative z-10 flex items-center justify-center gap-2 text-sm tracking-wide">
-                     🎡 Putar Roda Gacha (3 🎟️)
-                   </span>
+                   <span className="relative z-10 flex items-center justify-center gap-2 text-sm tracking-wide">🎡 Putar Roda Gacha (3 🎟️)</span>
                  </button>
               </div>
 
@@ -728,7 +706,6 @@ export default function App() {
               <div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Rasio Konsistensi Anak</p><h3 className="text-3xl font-black text-indigo-400 mt-1">{completionRate}%</h3></div><span className="text-4xl bg-slate-900 p-3 rounded-2xl border border-slate-700">📈</span>
             </div>
 
-            {/* TABUNGAN BINTANG REALTIME KEMBALI HADIR! */}
             <div className="bg-slate-800 md:col-span-3 rounded-3xl p-6 border border-slate-700 shadow-xl space-y-4">
               <h3 className="text-base font-bold text-slate-200">📊 Tabungan Bintang Anak Realtime</h3>
               {profiles.length === 0 && <p className="text-xs text-slate-500 italic text-center py-4">Belum ada riwayat tabungan anak.</p>}
@@ -827,7 +804,6 @@ export default function App() {
                         {isMultiplier && <span className="text-[10px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-2 py-0.5 rounded-md mt-1 inline-block animate-pulse shadow-md">🔥 BONUS 1.5X AKTIF</span>}
                       </div>
                       <div className="flex gap-2 w-full sm:w-auto">
-                        {/* TOMBOL TOLAK MISI TETAP ADA */}
                         <button type="button" onClick={() => handleRejectTask(task.id)} className="flex-1 sm:flex-none bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-sm whitespace-nowrap">Tolak ✖️</button>
                         <button type="button" onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className={`flex-1 sm:flex-none ${isMultiplier ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900' : 'bg-green-500 hover:bg-green-400 text-slate-900'} font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-md whitespace-nowrap`}>Setujui +{displayReward}⭐</button>
                       </div>
@@ -857,7 +833,6 @@ export default function App() {
 
         {parentTab === 'manage' && (
           <div className="space-y-6 animate-fade-in">
-            {/* Form Tambah Anak */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowChildForm(!showChildForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">👶 Tambah / Urus Akun Profil Anak</span><span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showChildForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
@@ -902,7 +877,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Form Tambah Misi */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowTaskForm(!showTaskForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">📋 Kelola & Tambah Misi Baru</span><span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showTaskForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
@@ -912,7 +886,6 @@ export default function App() {
                   <form onSubmit={handleAddTask} className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700">
                     <h3 className="text-sm font-black text-yellow-400 uppercase tracking-wider">Form Input Tugas / Misi:</h3>
                     <div>
-                      {/* DROPDOWN TEMPLATE MISI KEMBALI HADIR */}
                       <label className="text-xs text-amber-400 font-bold mb-1 block">💡 Gunakan Ide Misi Populer (Opsional):</label>
                       <select onChange={(e) => { const selected = MISSION_TEMPLATES.find(m => m.id === e.target.value); if (selected) { setTaskForm({ ...taskForm, title: selected.title, reward: selected.points }); } }} className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-4 py-2.5 text-xs font-medium text-amber-300 focus:outline-none focus:border-amber-400 cursor-pointer">
                         <option value="">-- Ketuk cepat untuk pilih template otomatis --</option>
@@ -961,7 +934,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Form Tambah Hadiah */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowRewardForm(!showRewardForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">🎁 Tambah Hadiah Baru</span><span className={`text-slate-400 text-xl font-bold transform transition-transform duration-300 ${showRewardForm ? 'rotate-180' : 'rotate-0'}`}>▼</span>
@@ -971,7 +943,6 @@ export default function App() {
                   <form onSubmit={handleAddReward} className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700">
                     <h3 className="text-sm font-black text-rose-400 uppercase tracking-wider">Form Input Reward Katalog:</h3>
                     <div>
-                      {/* DROPDOWN TEMPLATE HADIAH KEMBALI HADIR */}
                       <label className="text-xs text-rose-400 font-bold mb-1 block">💡 Gunakan Ide Hadiah Populer (Opsional):</label>
                       <select onChange={(e) => { const selected = REWARD_TEMPLATES.find(r => r.id === e.target.value); if (selected) { setRewardForm({ ...rewardForm, title: selected.title, cost: selected.points }); } }} className="w-full bg-slate-900 border border-rose-500/40 rounded-xl px-4 py-2.5 text-xs text-rose-300 font-medium">
                         <option value="">-- Ketuk cepat untuk pilih template otomatis --</option>
@@ -994,8 +965,17 @@ export default function App() {
                   <div className="space-y-3">
                     {rewards.map(r => (
                       <div key={r.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60 flex justify-between items-center text-sm">
-                         <div><p className="font-bold text-slate-200">{r.title} <span className="text-amber-400 text-xs ml-1">({r.cost} ⭐)</span></p></div>
-                         <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => handleDeleteReward(r.id)} className="text-red-400 hover:underline">Hapus</button></div>
+                        {editingRewardId === r.id ? (
+                          <div className="space-y-3 text-xs w-full animate-fade-in">
+                            <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editRewardForm.title || ''} onChange={e => setEditRewardForm({...editRewardForm, title: e.target.value})} />
+                            <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setEditingRewardId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditReward} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs">Simpan</button></div>
+                          </div>
+                        ) : (
+                          <>
+                             <div><p className="font-bold text-slate-200">{r.title} <span className="text-amber-400 text-xs ml-1">({r.cost} ⭐)</span></p></div>
+                             <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => startEditReward(r)} className="text-blue-400 hover:underline">Edit</button><button type="button" onClick={() => handleDeleteReward(r.id)} className="text-red-400 hover:underline">Hapus</button></div>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1003,7 +983,6 @@ export default function App() {
               )}
             </div>
 
-            {/* PENGATURAN RODA GACHA (FITUR BARU UNTUK ORTU) */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowWheelForm(!showWheelForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">🎡 Pengaturan Roda Gacha (Lucky Spin)</span>
@@ -1059,7 +1038,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 font-sans pb-32 relative overflow-hidden">
       
-      {/* ANIMASI SOFT BOUNCE */}
       <style>{`
         @keyframes bounce-soft { 0%, 100% { transform: translateY(-8%); animation-timing-function: cubic-bezier(0.8,0,1,1); } 50% { transform: translateY(0); animation-timing-function: cubic-bezier(0,0,0.2,1); } }
         .animate-bounce-soft { animation: bounce-soft 1.5s infinite; }
@@ -1067,16 +1045,13 @@ export default function App() {
 
       <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none" style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.15 }}></div>
 
-      {/* --- OVERLAY POPUP ANIMASI --- */}
       {celebration && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none bg-slate-900/70 backdrop-blur-md transition-opacity duration-500">
           
-          {/* ICON HADIAH MENGGUNAKAN .PNG */}
           {celebration === 'reward' && <img src="/Icon Hadiah.png" className="w-[50vw] max-w-[400px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />}
           
           {celebration === 'task' && <img src="/Icon Menang.png" className="w-[50vw] max-w-[400px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />}
           
-          {/* ANIMASI TIKET UNTUK MISI PERTAMA */}
           {celebration === 'ticket' && (
             <div className="flex flex-col items-center animate-bounce-soft">
                <img src="/Icon Tiket.png" className="w-[40vw] max-w-[300px] h-auto drop-shadow-[0_0_40px_rgba(234,179,8,0.7)] object-contain" alt="Dapat Tiket!" />
@@ -1084,7 +1059,6 @@ export default function App() {
             </div>
           )}
           
-          {/* ANIMASI WIN GACHA */}
           {celebration === 'spin_win' && (
             <div className="flex flex-col items-center animate-bounce-soft text-center p-8 bg-slate-800/80 border-2 border-yellow-400 rounded-3xl shadow-[0_0_50px_rgba(234,179,8,0.5)]">
                <span className="text-6xl mb-4">🎉</span>
@@ -1095,7 +1069,6 @@ export default function App() {
         </div>
       )}
 
-      {/* --- MODAL RODA GACHA / LUCKY SPIN --- */}
       {activeWheelChild && !celebration && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/90 backdrop-blur-sm px-4">
            <div className="bg-slate-800 p-8 rounded-[3rem] shadow-2xl border border-slate-700 w-full max-w-md flex flex-col items-center relative overflow-hidden">
@@ -1105,11 +1078,8 @@ export default function App() {
                <p className="text-sm text-slate-400 font-bold">Tiketmu: <span className="text-yellow-400">{activeWheelChild.tickets || 0} 🎟️</span></p>
              </div>
 
-             {/* RODA PUTAR CSS/SVG */}
              <div className="relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center mb-8">
-                {/* JARUM PENUNJUK (POINTER) */}
                 <div className="absolute -top-4 z-20 w-0 h-0 border-l-[15px] border-r-[15px] border-t-[35px] border-l-transparent border-r-transparent border-t-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]"></div>
-                {/* LINGKARAN RODA */}
                 <div 
                   className="w-full h-full rounded-full relative overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] border-4 border-slate-700/80"
                   style={{ 
@@ -1118,7 +1088,6 @@ export default function App() {
                     transition: 'transform 4s cubic-bezier(0.15,0.85,0.3,1)'
                   }}
                 >
-                   {/* TEKS DI DALAM RODA */}
                    {wheelPrizes.map((p, i) => {
                      const sliceDeg = 360 / wheelPrizes.length;
                      const rot = i * sliceDeg + (sliceDeg / 2);
