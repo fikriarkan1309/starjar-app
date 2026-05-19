@@ -51,7 +51,6 @@ const REWARD_TEMPLATES = [
   { id: 'r12', title: 'Tukar "Kupon Hadiah Misteri" (Gacha)', points: 10, category: '❓ Kupon Misteri' }
 ];
 
-// --- CONFIG FIREBASE STARJAR MILIK FIKRI ---
 const firebaseConfig = {
   apiKey: "AIzaSyCyK1iq0pRBcRCUOElmHxhfOOyRek_Graw",
   authDomain: "starjar-f3461.firebaseapp.com",
@@ -74,8 +73,8 @@ interface Profile {
   maxStars: number;
   avatar: string;
   theme: string;
-  streak: number;          // PENAMBAHAN FITUR STREAK
-  lastStreakDate: string;  // PENAMBAHAN FITUR STREAK
+  streak: number;
+  lastStreakDate: string;
 }
 
 interface Task {
@@ -98,7 +97,6 @@ interface Reward {
   assignedTo: string;
 }
 
-// Helper Tanggal Lokal yang Stabil
 const getLocalDateString = (d: Date) => {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -114,7 +112,6 @@ const getWeekNumber = (d: Date): string => {
   return date.getUTCFullYear() + '-' + weekNo;
 };
 
-// Fungsi Mengambil Warna Hex dari Tema untuk Grafik
 const getThemeHex = (theme: string) => {
   if (theme.includes('pink') || theme.includes('rose')) return '#ec4899';
   if (theme.includes('cyan') || theme.includes('blue')) return '#0ea5e9';
@@ -125,14 +122,13 @@ const getThemeHex = (theme: string) => {
   return '#cbd5e1'; 
 };
 
-// HELPER MENGAMBIL STREAK AKTIF SAAT INI
 const getActiveStreak = (profile: Profile) => {
   const todayStr = getLocalDateString(new Date());
   const yesterdayStr = getLocalDateString(new Date(Date.now() - 86400000));
   if (profile.lastStreakDate === todayStr || profile.lastStreakDate === yesterdayStr) {
     return profile.streak || 0;
   }
-  return 0; // Jika bolong lebih dari kemarin, hangus!
+  return 0; 
 };
 
 export default function App() {
@@ -172,7 +168,6 @@ export default function App() {
 
   const playSound = (type: 'success' | 'tada') => {
     try {
-      // SOUND BARU UNTUK REWARD MENGGUNAKAN EFEK JACKPOT/BONUS
       const url = type === 'success' 
         ? 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3' 
         : 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'; 
@@ -368,6 +363,13 @@ export default function App() {
     setShowRewardForm(false);
   };
 
+  // --- FUNGSI BARU: TOLAK MISI (REJECT TASK) ---
+  const handleRejectTask = async (taskId: string) => {
+    if (!user) return;
+    // Ubah isDone kembali ke false, jadi tugas akan aktif kembali di Mode Anak
+    await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isDone: false, isApproved: false });
+  };
+
   const handleApproveTask = async (taskId: string, childId: string | undefined, reward: number) => {
     if (!childId || !user) return;
     const child = profiles.find(p => p.id === childId);
@@ -379,27 +381,22 @@ export default function App() {
     let currentStreak = child.streak || 0;
     let lastStreakDate = child.lastStreakDate || '';
 
-    // 1. Cek apakah Streak hangus karena absen lebih dari 1 hari
     if (lastStreakDate !== todayStr && lastStreakDate !== yesterdayStr) {
       currentStreak = 0;
     }
 
-    // 2. Terapkan Multiplier 1.5x jika streak anak >= 4 hari
     const multiplier = currentStreak >= 4 ? 1.5 : 1;
     const finalReward = Math.ceil(reward * multiplier);
 
-    // 3. Setujui Tugas
     await update(ref(db, `users/${user.uid}/tasks/${taskId}`), { isApproved: true });
 
-    // 4. Evaluasi pencapaian 50% HARI INI
     const childTasks = tasks.filter(t => String(t.assignedTo) === String(child.id) && t.type === 'Daily');
     const totalDaily = childTasks.length;
     let approvedDaily = childTasks.filter(t => t.isApproved).length;
     
     const thisTask = tasks.find(t => t.id === taskId);
-    if (thisTask?.type === 'Daily') approvedDaily += 1; // Tambah status dari tugas yang baru di-approve ini
+    if (thisTask?.type === 'Daily') approvedDaily += 1; 
 
-    // Jika berhasil nyentuh 50% di hari ini dan belum terhitung, naikkan level api streak
     if (totalDaily > 0 && (approvedDaily / totalDaily) >= 0.5) {
       if (lastStreakDate !== todayStr) {
         currentStreak += 1;
@@ -407,7 +404,6 @@ export default function App() {
       }
     }
 
-    // 5. Simpan Profile & Stat Harian
     await update(ref(db, `users/${user.uid}/profiles/${child.id}`), { 
       stars: Math.min(child.stars + finalReward, child.maxStars),
       streak: currentStreak,
@@ -631,7 +627,6 @@ export default function App() {
           return (
             <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
               
-              {/* LENCANA API STREAK POJOK KANAN ATAS */}
               <div className="absolute top-5 right-5 flex flex-col items-center justify-center z-30">
                  {activeStreak === 0 && <span className="text-2xl filter grayscale opacity-20" title="Belum ada streak">🌑</span>}
                  {activeStreak === 1 && <span className="text-2xl filter drop-shadow-md" title="Streak 1 Hari">🔥</span>}
@@ -952,7 +947,6 @@ export default function App() {
                 {pendingTasks.map(task => {
                   const child = profiles.find(p => String(p.id) === String(task.assignedTo));
                   
-                  // CEK STREAK AKTIF ANAK BUAT NAMPILIN BONUS DI TOMBOL APPROVE
                   const currentChildStreak = child ? getActiveStreak(child) : 0;
                   const isMultiplier = currentChildStreak >= 4;
                   const displayReward = Math.ceil(task.reward * (isMultiplier ? 1.5 : 1));
@@ -964,9 +958,16 @@ export default function App() {
                         <p className="text-base font-bold text-white">{task.title}</p>
                         {isMultiplier && <span className="text-[10px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-2 py-0.5 rounded-md mt-1 inline-block animate-pulse shadow-md">🔥 BONUS 1.5X AKTIF</span>}
                       </div>
-                      <button type="button" onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className={`${isMultiplier ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900' : 'bg-green-500 hover:bg-green-400 text-slate-900'} font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-md whitespace-nowrap`}>
-                        Setujui +{displayReward}⭐
-                      </button>
+                      
+                      {/* FIX: TOMBOL TOLAK DITAMBAHKAN DI SEBELAH TOMBOL SETUJUI */}
+                      <div className="flex gap-2 w-full sm:w-auto">
+                        <button type="button" onClick={() => handleRejectTask(task.id)} className="flex-1 sm:flex-none bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-sm whitespace-nowrap">
+                          Tolak ✖️
+                        </button>
+                        <button type="button" onClick={() => handleApproveTask(task.id, child?.id, task.reward)} className={`flex-1 sm:flex-none ${isMultiplier ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900' : 'bg-green-500 hover:bg-green-400 text-slate-900'} font-black px-4 py-2.5 rounded-xl text-sm transition-all shadow-md whitespace-nowrap`}>
+                          Setujui +{displayReward}⭐
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1230,6 +1231,15 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 p-6 md:p-12 font-sans pb-32 relative overflow-hidden">
       
+      {/* CUSTOM STYLE UNTUK BOUNCE YANG LEBIH HALUS/PENDEK */}
+      <style>{`
+        @keyframes bounce-soft {
+          0%, 100% { transform: translateY(-8%); animation-timing-function: cubic-bezier(0.8,0,1,1); }
+          50% { transform: translateY(0); animation-timing-function: cubic-bezier(0,0,0.2,1); }
+        }
+        .animate-bounce-soft { animation: bounce-soft 1.5s infinite; }
+      `}</style>
+
       <div 
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none"
         style={{ backgroundImage: "url('/BG.jpg')", opacity: 0.15 }}
@@ -1238,10 +1248,11 @@ export default function App() {
       {celebration && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none bg-slate-900/60 backdrop-blur-sm transition-opacity duration-500">
           {celebration === 'reward' ? (
-            /* FIX: MENGGUNAKAN GAMBAR "Icon Hadiah.jpg" UNTUK ANIMASI KLAIM HADIAH */
-            <img src="/Icon Hadiah.png" className="w-[60vw] max-w-[400px] h-auto animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />
+            /* FIX: UKURAN GAMBAR HADIAH MENJADI 50vw DAN BOUNCE SOFT */
+            <img src="/Icon Hadiah.png" className="w-[50vw] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />
           ) : (
-            <img src="/Icon Menang.png" className="w-[75vw] max-w-[600px] h-auto animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />
+            /* FIX: IKON MENANG JUGA MENGGUNAKAN BOUNCE SOFT */
+            <img src="/Icon Menang.png" className="w-[75vw] max-w-[600px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />
           )}
         </div>
       )}
