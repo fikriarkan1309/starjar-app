@@ -51,7 +51,7 @@ const REWARD_TEMPLATES = [
   { id: 'r12', title: 'Tukar "Kupon Hadiah Misteri" (Gacha)', points: 10, category: '❓ Kupon Misteri' }
 ];
 
-// --- CONFIG FIREBASE STARJAR MILIK FIKRI (SERVER REGIONAL ASIA FIX) ---
+// --- CONFIG FIREBASE STARJAR MILIK FIKRI ---
 const firebaseConfig = {
   apiKey: "AIzaSyCyK1iq0pRBcRCUOElmHxhfOOyRek_Graw",
   authDomain: "starjar-f3461.firebaseapp.com",
@@ -66,7 +66,6 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-// --- DEFINISI INTERFACE TYPESCRIPT ---
 interface Profile {
   id: string;
   name: string;
@@ -536,7 +535,7 @@ export default function App() {
   }
 
   const renderChildView = () => (
-    <div className="space-y-12 max-w-6xl mx-auto animate-fade-in">
+    <div className="space-y-12 w-full mx-auto animate-fade-in px-2 md:px-4">
       <header className="text-center space-y-4">
         <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-400 to-cyan-400 tracking-tight drop-shadow-sm">
           Misi Bintang Hari Ini! 🚀
@@ -545,14 +544,15 @@ export default function App() {
       </header>
 
       {profiles.length === 0 && (
-        <div className="text-center p-12 bg-slate-800/50 rounded-3xl border border-slate-700">
+        <div className="text-center p-12 bg-slate-800/50 rounded-3xl border border-slate-700 max-w-6xl mx-auto">
           <span className="text-6xl mb-4 block">👋</span>
           <h2 className="text-2xl font-bold text-white mb-2">Belum ada profil Anak</h2>
           <p className="text-slate-400">Ayah/Ibu perlu menambahkan profil anak di panel Ortu terlebih dahulu.</p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+      {/* MODIFIKASI LAYOUT: SCROLL KE SAMPING PADA IPAD & PC, VERTikal di HP */}
+      <div className="flex flex-col md:flex-row md:overflow-x-auto gap-8 items-start md:pb-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent w-full justify-center md:justify-start">
         {profiles.map(profile => {
           const fillPercentage = Math.min((profile.stars / profile.maxStars) * 100, 100);
           const childTasks = tasks.filter(t => String(t.assignedTo) === String(profile.id));
@@ -564,111 +564,121 @@ export default function App() {
           const isAchieveOpen = !!childAchieveOpen[profile.id];
 
           return (
-            <div key={profile.id} className="bg-slate-800/60 border border-slate-700/60 rounded-[3rem] p-6 md:p-8 shadow-xl flex flex-col md:flex-row gap-8 items-stretch relative overflow-hidden backdrop-blur-md">
-              <div className="flex-1 flex flex-col items-center justify-center space-y-4 md:border-r md:border-slate-700/50 md:pr-4">
-                <div className="text-center">
-                  <span className="text-6xl md:text-7xl block filter drop-shadow">{profile.avatar}</span>
-                  <h2 className="text-2xl font-black mt-2 text-white">{profile.name}</h2>
-                  <span className="text-xs bg-slate-700 text-slate-300 font-black px-3 py-1 rounded-full uppercase tracking-wider">{profile.role}</span>
+            // BALIKIN UI GAMBAR 3: BACKGROUND GRADASI PENUH MENGIKUTI TEMA PROFIL
+            <div key={profile.id} className={`w-full md:w-[450px] md:flex-shrink-0 bg-gradient-to-br ${profile.theme} rounded-[3rem] p-6 md:p-8 shadow-2xl flex flex-col gap-6 relative overflow-hidden text-slate-900 border border-white/10`}>
+              
+              {/* HEADER KARTU ANAK DENGAN TEKS BAYANGAN PUTIH AGAR JELAS */}
+              <div className="flex flex-col items-center justify-center text-center space-y-3">
+                <div>
+                  <span className="text-6xl md:text-7xl block filter drop-shadow-md">{profile.avatar}</span>
+                  <h2 className="text-2xl font-black mt-2 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">{profile.name}</h2>
+                  <span className="text-[10px] bg-black/30 text-white font-black px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur-sm">{profile.role}</span>
                 </div>
 
-                <div className="relative w-44 h-60 bg-white/10 rounded-[2rem] border-4 border-white/20 shadow-[inset_0_4px_20px_rgba(250,250,250,0.1)] flex flex-col justify-end p-4 overflow-hidden group">
-                  <div className="absolute top-0 left-0 right-0 h-5 bg-gradient-to-b from-amber-800/60 to-transparent z-10 flex items-center justify-center">
-                    <div className="w-16 h-3 bg-amber-900 border border-amber-950 rounded-b-md shadow-md"></div>
+                {/* VISUAL TOPLES KACA DIGITAL */}
+                <div className="relative w-44 h-60 bg-white/15 rounded-[2.5rem] border-4 border-white/30 shadow-[inset_0_4px_20px_rgba(255,255,255,0.2)] flex flex-col justify-end p-4 overflow-hidden backdrop-blur-xs">
+                  <div className="absolute top-0 left-0 right-0 h-5 bg-gradient-to-b from-black/20 to-transparent z-10 flex items-center justify-center">
+                    <div className="w-16 h-2.5 bg-amber-950/40 border border-black/20 rounded-b-md shadow-sm"></div>
                   </div>
-                  <div className={`w-full rounded-b-[1.5rem] bg-gradient-to-t ${profile.theme} transition-all duration-1000 relative shadow-inner`} style={{ height: `${fillPercentage}%` }}>
+                  
+                  {/* PENGISIAN CAIRAN KUNING EMAS BINTANG TETAP KUNING SESUAI GAMBAR 3 */}
+                  <div className="w-full rounded-b-[1.8rem] bg-gradient-to-t from-yellow-400 to-amber-500 transition-all duration-1000 relative shadow-[inset_0_2px_10px_rgba(255,255,255,0.4)]" style={{ height: `${fillPercentage}%` }}>
                     {fillPercentage > 5 && (
-                      <div className="absolute inset-0 flex flex-wrap gap-2 p-3 items-end justify-center overflow-hidden animate-pulse">
-                        {Array.from({ length: Math.min(profile.stars, 15) }).map((_, i) => (
-                          <span key={i} className="text-xl filter drop-shadow-[0_2px_5px_rgba(0,0,0,0.3)] transform rotate-12">⭐</span>
+                      <div className="absolute inset-0 flex flex-wrap gap-1.5 p-3 items-end justify-center overflow-hidden animate-pulse">
+                        {Array.from({ length: Math.min(profile.stars, 12) }).map((_, i) => (
+                          <span key={i} className="text-xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transform rotate-12">⭐</span>
                         ))}
                       </div>
                     )}
                   </div>
                   <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
-                    <span className="text-4xl font-black text-white filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">{profile.stars}</span>
-                    <span className="text-[10px] font-black text-white/80 filter drop-shadow uppercase tracking-widest mt-1">/ {profile.maxStars} Bintang</span>
+                    <span className="text-4xl font-black text-white filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.7)]">{profile.stars}</span>
+                    <span className="text-[9px] font-black text-white/90 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] uppercase tracking-widest mt-0.5">/ {profile.maxStars} Bintang</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex-[1.3] flex flex-col justify-between gap-4">
-                <div className="space-y-4">
-                  <div className="bg-slate-900/40 border border-slate-700/40 rounded-2xl overflow-hidden transition-all duration-300">
-                    <button onClick={() => toggleChildRoutine(profile.id)} className="w-full px-4 py-3.5 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-200">🔄 Rutinitas Harian</span>
-                        <span className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childRoutines.length}</span>
-                      </div>
-                      <span className={`text-slate-400 text-xs font-bold transform transition-transform duration-300 ${isRoutineOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
-                    </button>
-                    {isRoutineOpen && (
-                      <div className="p-3 border-t border-slate-700/40 space-y-2 bg-slate-900/20 animate-fade-in">
-                        {childRoutines.map(item => (
-                          <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border border-slate-700/60 bg-slate-900/60 gap-3">
-                            <div>
-                              <p className="text-sm font-bold text-slate-100">{item.title}</p>
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">{getTaskLabel(item)}</span>
-                            </div>
-                            <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`w-full sm:w-auto px-4 py-2 rounded-lg font-black text-xs transition-all ${item.isDone ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-900 shadow-md'}`}>
-                              {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
-                            </button>
+              {/* LIST MISI & HADIAH MEMANJANG KE BAWAH DI DALAM KARTU */}
+              <div className="w-full flex flex-col gap-4">
+                
+                {/* AKORDION RUTINITAS */}
+                <div className="bg-black/15 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xs">
+                  <button onClick={() => toggleChildRoutine(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-black/10 transition-all text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-white drop-shadow-sm">🔄 Rutinitas Harian</span>
+                      <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-black">{childRoutines.length}</span>
+                    </div>
+                    <span className={`text-white text-xs font-black transform transition-transform duration-300 ${isRoutineOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                  </button>
+                  {isRoutineOpen && (
+                    <div className="p-2.5 border-t border-white/10 space-y-2 bg-black/5 animate-fade-in">
+                      {childRoutines.map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-3 rounded-xl border border-white/20 bg-white/90 text-slate-900 shadow-sm gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black truncate">{item.title}</p>
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200 mt-1 inline-block">{getTaskLabel(item)}</span>
                           </div>
-                        ))}
-                        {childRoutines.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic">Belum ada tugas rutin.</p>}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-slate-900/40 border border-slate-700/40 rounded-2xl overflow-hidden transition-all duration-300">
-                    <button onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3.5 flex justify-between items-center hover:bg-slate-700/20 transition-all text-left">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-200">🏆 Misi Pencapaian</span>
-                        <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-black">{childAchievements.length}</span>
-                      </div>
-                      <span className={`text-slate-400 text-xs font-bold transform transition-transform duration-300 ${isAchieveOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
-                    </button>
-                    {isAchieveOpen && (
-                      <div className="p-3 border-t border-slate-700/40 space-y-2 bg-slate-900/20 animate-fade-in">
-                        {childAchievements.map(item => (
-                          <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border border-slate-700/60 bg-slate-900/60 gap-3">
-                            <div>
-                              <p className="text-sm font-bold text-slate-100">{item.title}</p>
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">{getTaskLabel(item)}</span>
-                            </div>
-                            <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`w-full sm:w-auto px-4 py-2 rounded-lg font-black text-xs transition-all ${item.isDone ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-gradient-to-r from-pink-500 to-rose-400 text-white shadow-md'}`}>
-                              {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
-                            </button>
-                          </div>
-                        ))}
-                        {childAchievements.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic">Belum ada misi khusus.</p>}
-                      </div>
-                    )}
-                  </div>
+                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
+                            {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
+                          </button>
+                        </div>
+                      ))}
+                      {childRoutines.length === 0 && <p className="text-center text-white/70 text-xs py-2 italic font-medium">Belum ada tugas rutin.</p>}
+                    </div>
+                  )}
                 </div>
 
-                <div className="bg-slate-900/30 border border-slate-700/50 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-700/50 pb-2">
-                    <span className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">🎁 Tukar Hadiah Impian</span>
-                    <button type="button" onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="text-[11px] text-amber-400 font-bold hover:underline">
-                      {activeCatalogId === profile.id ? 'Tutup Toko ✖️' : 'Buka Toko 🛒'}
+                {/* AKORDION PENCAPAIAN */}
+                <div className="bg-black/15 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xs">
+                  <button onClick={() => toggleChildAchieve(profile.id)} className="w-full px-4 py-3 flex justify-between items-center hover:bg-black/10 transition-all text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-white drop-shadow-sm">🏆 Misi Pencapaian</span>
+                      <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full font-black">{childAchievements.length}</span>
+                    </div>
+                    <span className={`text-white text-xs font-black transform transition-transform duration-300 ${isAchieveOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                  </button>
+                  {isAchieveOpen && (
+                    <div className="p-2.5 border-t border-white/10 space-y-2 bg-black/5 animate-fade-in">
+                      {childAchievements.map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-3 rounded-xl border border-white/20 bg-white/90 text-slate-900 shadow-sm gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black truncate">{item.title}</p>
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 border border-pink-200 mt-1 inline-block">{getTaskLabel(item)}</span>
+                          </div>
+                          <button onClick={() => handleCompleteTask(item.id)} disabled={item.isDone} className={`px-3 py-2 rounded-lg font-black text-[11px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
+                            {item.isDone ? 'Ditinjau ⏳' : `+${item.reward} ⭐`}
+                          </button>
+                        </div>
+                      ))}
+                      {childAchievements.length === 0 && <p className="text-center text-white/70 text-xs py-2 italic font-medium">Belum ada misi khusus.</p>}
+                    </div>
+                  )}
+                </div>
+
+                {/* KATALOG TOKO HADIAH KATALOG */}
+                <div className="bg-black/10 border border-white/10 rounded-2xl p-4 space-y-3 backdrop-blur-xs">
+                  <div className="flex justify-between items-center border-b border-white/20 pb-2">
+                    <span className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5 drop-shadow-xs">🎁 Tukar Hadiah Impian</span>
+                    <button type="button" onClick={() => setActiveCatalogId(activeCatalogId === profile.id ? null : profile.id)} className="text-[11px] text-white font-black underline bg-black/20 px-2 py-0.5 rounded-md hover:bg-black/30 transition-all">
+                      {activeCatalogId === profile.id ? 'Tutup ✖️' : 'Buka Toko 🛒'}
                     </button>
                   </div>
                   
                   {activeCatalogId === profile.id && (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1 animate-fade-in">
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 animate-fade-in scrollbar-none">
                       {childRewards.map(r => (
-                        <div key={r.id} className="flex justify-between items-center p-2.5 rounded-xl bg-slate-900/60 border border-slate-700/70 text-xs">
-                          <span className="text-slate-200 font-bold">{r.title}</span>
-                          <button onClick={() => handleClaimReward(r.id, profile.id, r.cost)} disabled={r.isClaimed || profile.stars < r.cost} className={`px-3 py-1.5 rounded-md font-black text-[10px] transition-all ${r.isClaimed ? 'bg-green-600/30 text-green-400' : profile.stars < r.cost ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow'}`}>
+                        <div key={r.id} className="flex justify-between items-center p-2.5 rounded-xl bg-white/95 border border-white/20 shadow-sm text-xs gap-2">
+                          <span className="text-slate-900 font-black truncate">{r.title}</span>
+                          <button onClick={() => handleClaimReward(r.id, profile.id, r.cost)} disabled={r.isClaimed || profile.stars < r.cost} className={`px-3 py-1.5 rounded-md font-black text-[10px] transition-all whitespace-nowrap ${r.isClaimed ? 'bg-green-100 text-green-700' : profile.stars < r.cost ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md active:scale-95'}`}>
                             {r.isClaimed ? 'Diklaim ⏳' : `${r.cost} ⭐`}
                           </button>
                         </div>
                       ))}
-                      {childRewards.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic">Belum ada daftar hadiah.</p>}
+                      {childRewards.length === 0 && <p className="text-center text-white/70 text-xs py-2 italic font-medium">Belum ada daftar hadiah.</p>}
                     </div>
                   )}
                 </div>
+
               </div>
             </div>
           );
@@ -728,7 +738,7 @@ export default function App() {
                         <div className="text-right"><span className="text-yellow-400 font-black text-base">{p.stars}</span><span className="text-slate-500 text-xs ml-1">/ {p.maxStars} ⭐</span></div>
                       </div>
                       <div className="w-full bg-slate-900 rounded-full h-4 border border-slate-700 overflow-hidden relative">
-                        <div className={`h-full rounded-full bg-gradient-to-r ${p.theme} transition-all duration-1000`} style={{ width: `${percent}%` }}></div>
+                        <div className={`h-full rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 transition-all duration-1000`} style={{ width: `${percent}%` }}></div>
                       </div>
                     </div>
                   );
@@ -776,7 +786,7 @@ export default function App() {
 
         {parentTab === 'manage' && (
           <div className="space-y-6 animate-fade-in">
-            {/* --- ACCORDION 1: KELOLA PROFIL ANAK --- */}
+            {/* ACCORDION 1: KELOLA PROFIL ANAK */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowChildForm(!showChildForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">👶 Tambah / Urus Akun Profil Anak</span>
@@ -829,7 +839,7 @@ export default function App() {
               )}
             </div>
 
-            {/* --- ACCORDION 2: TAMBAH MISI DENGAN TEMPLATE OTOMATIS SAKTI --- */}
+            {/* ACCORDION 2: TAMBAH MISI DENGAN TEMPLATE OTOMATIS */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowTaskForm(!showTaskForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">📋 Kelola & Tambah Misi Baru</span>
@@ -840,7 +850,6 @@ export default function App() {
                   <form onSubmit={handleAddTask} className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700">
                     <h3 className="text-sm font-black text-yellow-400 uppercase tracking-wider">Form Input Tugas / Misi:</h3>
                     
-                    {/* DROP DOWN TEMPLATE MISI UTAMA */}
                     <div>
                       <label className="text-xs text-amber-400 font-bold mb-1 block">💡 Gunakan Ide Misi Populer (Opsional):</label>
                       <select 
@@ -918,7 +927,7 @@ export default function App() {
               )}
             </div>
 
-            {/* --- ACCORDION 3: TAMBAH HADIAH REWARD DENGAN TEMPLATE OTOMATIS SAKTI --- */}
+            {/* ACCORDION 3: TAMBAH HADIAH REWARD DENGAN TEMPLATE OTOMATIS */}
             <div className="bg-slate-800 rounded-3xl border border-slate-700 shadow-xl overflow-hidden transition-all duration-300">
               <button type="button" onClick={() => setShowRewardForm(!showRewardForm)} className="w-full px-6 py-4 flex justify-between items-center bg-slate-800/80 hover:bg-slate-700/30 transition-all text-left">
                 <span className="text-lg font-bold text-white flex items-center gap-2">🎁 Tambah Hadiah Baru</span>
@@ -929,7 +938,6 @@ export default function App() {
                   <form onSubmit={handleAddReward} className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700">
                     <h3 className="text-sm font-black text-rose-400 uppercase tracking-wider">Form Input Reward Katalog:</h3>
                     
-                    {/* DROP DOWN TEMPLATE HADIAH UTAMA */}
                     <div>
                       <label className="text-xs text-rose-400 font-bold mb-1 block">💡 Gunakan Ide Hadiah Populer (Opsional):</label>
                       <select 
@@ -1004,7 +1012,6 @@ export default function App() {
               )}
             </div>
 
-            {/* --- SEKAT LOGOUT UTAMA AKUN ORANG TUA --- */}
             <div className="pt-6 border-t border-slate-700/40 flex justify-center">
               <button type="button" onClick={handleLogout} className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-black rounded-xl text-xs uppercase tracking-wider transition-all">
                 🚪 Keluar Akun StarJar
@@ -1028,7 +1035,6 @@ export default function App() {
 
       {currentRole === 'child' ? renderChildView() : renderParentView()}
 
-      {/* FOOTER SWITCHER NAVIGASI MODE */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-1">
         <button type="button" onClick={() => setCurrentRole('child')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'child' ? 'bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 shadow-md scale-105' : 'text-slate-400 hover:text-white'}`}>👶 Mode Anak</button>
         <button type="button" onClick={() => setCurrentRole('parent')} className={`px-5 py-2 rounded-full font-black text-xs md:text-sm transition-all ${currentRole === 'parent' ? 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 shadow-md scale-105' : 'text-slate-400 hover:text-white'}`}>👨‍👩‍👧‍👦 Mode Ortu</button>
