@@ -6,7 +6,6 @@ import {
   signOut, onAuthStateChanged, sendPasswordResetEmail 
 } from 'firebase/auth';
 
-// --- DATA TEMPLATE POPULER STARJAR ---
 const MISSION_TEMPLATES = [
   { id: 'm1', title: 'Sikat Gigi Tanpa Drama (Pagi & Malam)', points: 1, category: '🏠 Kemandirian' },
   { id: 'm2', title: 'Taruh Baju Kotor ke Keranjang', points: 1, category: '🏠 Kemandirian' },
@@ -161,13 +160,17 @@ export default function App() {
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [editRewardForm, setEditRewardForm] = useState<Partial<Reward>>({});
 
-  const playSound = (type: 'success' | 'tada' | 'ticket' | 'spin') => {
+  const playSound = (type: 'success' | 'tada' | 'ticket' | 'spin' | 'tick') => {
     try {
       let url = 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3';
       if (type === 'tada') url = 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3';
       if (type === 'ticket') url = 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3';
-      if (type === 'spin') url = 'https://assets.mixkit.co/active_storage/sfx/2011/2011-preview.mp3';
-      new Audio(url).play();
+      if (type === 'spin') url = 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3'; // Efek Wheel Spin Kasino
+      if (type === 'tick') url = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'; // Efek Tek-Tek Pendek
+      
+      const audio = new Audio(url);
+      if (type === 'tick') audio.volume = 0.3; // Suara tek-tek dikecilkan sedikit
+      audio.play();
     } catch (e) {}
   };
 
@@ -422,6 +425,14 @@ export default function App() {
     setIsSpinning(true);
     playSound('spin');
 
+    // Tambahan Loop Sound Efek "Tek-Tek-Tek"
+    let tickCount = 0;
+    const tickInterval = setInterval(() => {
+      playSound('tick');
+      tickCount++;
+      if(tickCount > 25) clearInterval(tickInterval);
+    }, 150);
+
     await update(ref(db, `users/${user.uid}/profiles/${activeWheelChild.id}`), {
       tickets: activeWheelChild.tickets - 3
     });
@@ -550,6 +561,7 @@ export default function App() {
           const isRoutineOpen = !!childRoutineOpen[profile.id];
           const isAchieveOpen = !!childAchieveOpen[profile.id];
           const activeStreak = getActiveStreak(profile);
+          const isMultiplierActive = activeStreak >= 4;
 
           return (
             <div key={profile.id} className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100">
@@ -567,13 +579,13 @@ export default function App() {
                  {activeStreak === 1 && <span className="text-2xl filter drop-shadow-md">🔥</span>}
                  {activeStreak === 2 && <span className="text-3xl filter drop-shadow-lg">🔥🔥</span>}
                  {activeStreak === 3 && <span className="text-4xl filter drop-shadow-xl animate-pulse">🔥🔥🔥</span>}
-                 {activeStreak >= 4 && (
+                 {isMultiplierActive && (
                    <div className="flex flex-col items-center transform scale-110 animate-bounce">
                      <span className="text-5xl filter drop-shadow-[0_0_20px_rgba(239,68,68,0.9)]">☄️💥</span>
                      <span className="bg-gradient-to-r from-red-600 to-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full mt-1 border border-yellow-300 shadow-lg">1.5x BONUS</span>
                    </div>
                  )}
-                 <span className="text-[8px] font-black text-slate-400 mt-1 uppercase tracking-wider">{activeStreak >= 4 ? 'MAX STREAK!' : `STREAK: ${activeStreak} HARI`}</span>
+                 <span className="text-[8px] font-black text-slate-400 mt-1 uppercase tracking-wider">{isMultiplierActive ? 'MAX STREAK!' : `STREAK: ${activeStreak} HARI`}</span>
               </div>
 
               <div className="flex flex-col items-center justify-center text-center space-y-3 pt-4">
@@ -612,14 +624,24 @@ export default function App() {
                   </button>
                   {isRoutineOpen && (
                     <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
-                      {childRoutines.map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-white text-slate-900 shadow-sm gap-2">
-                          <div className="flex-1 min-w-0"><p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p><span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 mt-1 inline-block">{getTaskLabel(item)}</span></div>
-                          <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
-                            {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
-                          </button>
-                        </div>
-                      ))}
+                      {childRoutines.map(item => {
+                        const rewardDisplay = isMultiplierActive ? Math.ceil(item.reward * 1.5) : item.reward;
+                        return (
+                          <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-slate-900/80 text-slate-200 shadow-sm gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-slate-200 leading-tight">{item.title}</p>
+                              <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                                <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400 border border-blue-800/50">{getTaskLabel(item)}</span>
+                                <span className="text-[9px] font-black text-yellow-400 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">+{rewardDisplay} ⭐</span>
+                                {isMultiplierActive && <span className="text-[8px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-1.5 py-0.5 rounded animate-pulse shadow-md border border-red-400/50">🔥 1.5X BONUS</span>}
+                              </div>
+                            </div>
+                            <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
+                              {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
+                            </button>
+                          </div>
+                        );
+                      })}
                       {childRoutines.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic font-medium">Belum ada tugas rutin.</p>}
                     </div>
                   )}
@@ -632,14 +654,24 @@ export default function App() {
                   </button>
                   {isAchieveOpen && (
                     <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
-                      {childAchievements.map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-white text-slate-900 shadow-sm gap-2">
-                          <div className="flex-1 min-w-0"><p className="text-xs font-black text-slate-900 leading-tight">{item.title}</p><span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-200 mt-1 inline-block">{getTaskLabel(item)}</span></div>
-                          <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
-                            {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
-                          </button>
-                        </div>
-                      ))}
+                      {childAchievements.map(item => {
+                        const rewardDisplay = isMultiplierActive ? Math.ceil(item.reward * 1.5) : item.reward;
+                        return (
+                          <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-slate-900/80 text-slate-200 shadow-sm gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-slate-200 leading-tight">{item.title}</p>
+                              <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                                <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-pink-900/30 text-pink-400 border border-pink-800/50">{getTaskLabel(item)}</span>
+                                <span className="text-[9px] font-black text-yellow-400 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">+{rewardDisplay} ⭐</span>
+                                {isMultiplierActive && <span className="text-[8px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-1.5 py-0.5 rounded animate-pulse shadow-md border border-red-400/50">🔥 1.5X BONUS</span>}
+                              </div>
+                            </div>
+                            <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
+                              {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
+                            </button>
+                          </div>
+                        );
+                      })}
                       {childAchievements.length === 0 && <p className="text-center text-slate-500 text-xs py-2 italic font-medium">Belum ada misi khusus.</p>}
                     </div>
                   )}
@@ -916,14 +948,20 @@ export default function App() {
                       return (
                         <div key={t.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60">
                           {editingTaskId === t.id ? (
-                            <div className="space-y-3 text-xs animate-fade-in">
-                              <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editTaskForm.title || ''} onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})} />
-                              <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setEditingTaskId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditTask} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs">Simpan</button></div>
+                            <div className="space-y-3 text-xs animate-fade-in w-full">
+                              <div><label className="text-[10px] text-slate-400">Nama Misi</label><input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editTaskForm.title || ''} onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})} /></div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div><label className="text-[10px] text-slate-400">Poin Hadiah</label><input type="number" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editTaskForm.reward || 0} onChange={e => setEditTaskForm({...editTaskForm, reward: Number(e.target.value)})} /></div>
+                                <div><label className="text-[10px] text-slate-400">Untuk Anak</label><select className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editTaskForm.assignedTo || 'all'} onChange={e => setEditTaskForm({...editTaskForm, assignedTo: e.target.value})}><option value="all">🌟 Semua Anak</option>{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                                <div><label className="text-[10px] text-slate-400">Jenis</label><select className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editTaskForm.type || 'Daily'} onChange={e => setEditTaskForm({...editTaskForm, type: e.target.value})}><option value="Daily">Rutinitas</option><option value="Achievement">Pencapaian</option></select></div>
+                                {editTaskForm.type === 'Daily' && (<div><label className="text-[10px] text-slate-400">Siklus</label><select className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editTaskForm.recurrence || 'daily'} onChange={e => setEditTaskForm({...editTaskForm, recurrence: e.target.value})}><option value="daily">Harian</option><option value="weekly">Mingguan</option><option value="monthly">Bulanan</option></select></div>)}
+                              </div>
+                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50 mt-2"><button type="button" onClick={() => setEditingTaskId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditTask} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs">Simpan Perubahan</button></div>
                             </div>
                           ) : (
                             <div className="flex justify-between items-center text-sm gap-3">
                               <div><p className="font-bold text-white">{t.title} <span className="text-yellow-400 text-xs ml-1">(+{t.reward}⭐)</span></p><p className="text-[11px] text-slate-500 mt-0.5">Pemilik: <span className="text-slate-300 font-medium">{child?.name || 'Umum'}</span></p></div>
-                              <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => startEditTask(t)} className="text-blue-400 hover:underline">Edit</button><button type="button" onClick={() => handleDeleteTask(t.id)} className="text-red-400 hover:underline">Hapus</button></div>
+                              <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => startEditTask(t)} className="text-blue-400 hover:underline">Edit Lengkap</button><button type="button" onClick={() => handleDeleteTask(t.id)} className="text-red-400 hover:underline">Hapus</button></div>
                             </div>
                           )}
                         </div>
@@ -967,13 +1005,17 @@ export default function App() {
                       <div key={r.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60 flex justify-between items-center text-sm">
                         {editingRewardId === r.id ? (
                           <div className="space-y-3 text-xs w-full animate-fade-in">
-                            <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editRewardForm.title || ''} onChange={e => setEditRewardForm({...editRewardForm, title: e.target.value})} />
-                            <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setEditingRewardId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditReward} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs">Simpan</button></div>
+                            <div><label className="text-[10px] text-slate-400">Nama Hadiah</label><input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editRewardForm.title || ''} onChange={e => setEditRewardForm({...editRewardForm, title: e.target.value})} /></div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div><label className="text-[10px] text-slate-400">Harga (Bintang)</label><input type="number" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editRewardForm.cost || 0} onChange={e => setEditRewardForm({...editRewardForm, cost: Number(e.target.value)})} /></div>
+                              <div><label className="text-[10px] text-slate-400">Untuk Anak</label><select className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold mt-1" value={editRewardForm.assignedTo || 'all'} onChange={e => setEditRewardForm({...editRewardForm, assignedTo: e.target.value})}><option value="all">🌟 Semua Anak</option>{profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50 mt-2"><button type="button" onClick={() => setEditingRewardId(null)} className="text-slate-400 font-bold px-3 py-1.5 text-xs">Batal</button><button type="button" onClick={saveEditReward} className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black text-xs">Simpan Perubahan</button></div>
                           </div>
                         ) : (
                           <>
                              <div><p className="font-bold text-slate-200">{r.title} <span className="text-amber-400 text-xs ml-1">({r.cost} ⭐)</span></p></div>
-                             <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => startEditReward(r)} className="text-blue-400 hover:underline">Edit</button><button type="button" onClick={() => handleDeleteReward(r.id)} className="text-red-400 hover:underline">Hapus</button></div>
+                             <div className="flex gap-3 text-xs font-bold whitespace-nowrap"><button type="button" onClick={() => startEditReward(r)} className="text-blue-400 hover:underline">Edit Lengkap</button><button type="button" onClick={() => handleDeleteReward(r.id)} className="text-red-400 hover:underline">Hapus</button></div>
                           </>
                         )}
                       </div>
