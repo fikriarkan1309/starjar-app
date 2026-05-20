@@ -160,17 +160,22 @@ export default function App() {
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [editRewardForm, setEditRewardForm] = useState<Partial<Reward>>({});
 
-  const playSound = (type: 'success' | 'tada' | 'ticket' | 'spin' | 'tick') => {
+ const playSound = (type: 'success' | 'tada' | 'ticket' | 'spin' | 'tick') => {
     try {
-      let url = 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3';
-      if (type === 'tada') url = 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3';
-      if (type === 'ticket') url = 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3';
-      if (type === 'spin') url = 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3'; // Efek Wheel Spin Kasino
-      if (type === 'tick') url = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'; // Efek Tek-Tek Pendek
+      let url = 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'; // Suara misi biasa
+      if (type === 'tada') url = 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'; // Klaim hadiah
+      
+      // SUARA TIKET BARU: Efek "Magical Bonus / Coin Arcade" yg spesial!
+      if (type === 'ticket') url = 'https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3'; 
+      
+      if (type === 'spin') url = 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3'; 
+      if (type === 'tick') url = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'; 
       
       const audio = new Audio(url);
-      if (type === 'tick') audio.volume = 0.3; // Suara tek-tek dikecilkan sedikit
-      audio.play();
+      if (type === 'tick') audio.volume = 0.3;
+      if (type === 'ticket') audio.volume = 1.0; // Pastikan suara tiket kencang dan jelas
+      
+      audio.play().catch(e => console.log('Browser nahan auto-play:', e));
     } catch (e) {}
   };
 
@@ -180,7 +185,7 @@ export default function App() {
     
     if (type === 'task' && gotTicket) {
       setTimeout(() => {
-        playSound('ticket');
+        playSound('ticket'); // Panggil suara tiket emasnya di sini!
         setCelebration('ticket');
         setTimeout(() => setCelebration(null), 2500);
       }, 2000);
