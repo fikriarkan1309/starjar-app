@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, onValue, push, update, remove } from 'firebase/database';
+import { getDatabase, ref, onValue, push, update, remove, get } from 'firebase/database';
 import { 
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
   signOut, onAuthStateChanged, sendPasswordResetEmail 
@@ -69,6 +69,9 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
+// DAFTAR EMAIL ADMIN UNTUK PANEL RAHASIA
+const ADMIN_EMAILS = ['admin@starjar.com', 'fikri@forless.com'];
+
 interface Profile {
   id: string; name: string; role: string; stars: number; maxStars: number;
   avatar: string; theme: string; streak: number; lastStreakDate: string;
@@ -121,6 +124,10 @@ export default function App() {
   const [isPremium, setIsPremium] = useState<boolean>(false);
   const [loadingPremium, setLoadingPremium] = useState<boolean>(true);
   
+  // STATS ADMIN
+  const isAdmin = user && user.email && ADMIN_EMAILS.includes(user.email);
+  const [allUsersData, setAllUsersData] = useState<any>({});
+  
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [showPassword, setShowPassword] = useState<boolean>(false); 
@@ -160,20 +167,17 @@ export default function App() {
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [editRewardForm, setEditRewardForm] = useState<Partial<Reward>>({});
 
- const playSound = (type: 'success' | 'tada' | 'ticket' | 'spin' | 'tick') => {
+  const playSound = (type: 'success' | 'tada' | 'ticket' | 'spin' | 'tick') => {
     try {
-      let url = 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'; // Suara misi biasa
-      if (type === 'tada') url = 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'; // Klaim hadiah
-      
-      // SUARA TIKET BARU: Efek "Magical Bonus / Coin Arcade" yg spesial!
+      let url = 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'; 
+      if (type === 'tada') url = 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3'; 
       if (type === 'ticket') url = 'https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3'; 
-      
       if (type === 'spin') url = 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3'; 
       if (type === 'tick') url = 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'; 
       
       const audio = new Audio(url);
       if (type === 'tick') audio.volume = 0.3;
-      if (type === 'ticket') audio.volume = 1.0; // Pastikan suara tiket kencang dan jelas
+      if (type === 'ticket') audio.volume = 1.0; 
       
       audio.play().catch(e => console.log('Browser nahan auto-play:', e));
     } catch (e) {}
@@ -185,7 +189,7 @@ export default function App() {
     
     if (type === 'task' && gotTicket) {
       setTimeout(() => {
-        playSound('ticket'); // Panggil suara tiket emasnya di sini!
+        playSound('ticket'); 
         setCelebration('ticket');
         setTimeout(() => setCelebration(null), 2500);
       }, 2000);
@@ -201,8 +205,17 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // KHUSUS FETCH DATA ADMIN JIKA LOGIN SEBAGAI ADMIN
   useEffect(() => {
-    if (!user) { setProfiles([]); setTasks([]); setRewards([]); setStats({}); setIsPremium(false); return; }
+    if (isAdmin) {
+      const unsubAll = onValue(ref(db, 'users'), (snap) => setAllUsersData(snap.val() || {}));
+      return () => unsubAll();
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!user || isAdmin) { setProfiles([]); setTasks([]); setRewards([]); setStats({}); setIsPremium(false); return; }
+    
     const userBasePath = `users/${user.uid}`;
     setLoadingPremium(true);
 
@@ -246,26 +259,40 @@ export default function App() {
       } as Task));
       setTasks(tData);
 
-      const todayStr = new Date().toDateString();
+      const todayStr = getLocalDateString(new Date());
       const currentWeek = getWeekNumber(new Date());
       const currentMonth = new Date().getFullYear() + '-' + new Date().getMonth();
 
-      if (localStorage.getItem(`lastDailyReset_${user.uid}`) !== todayStr) {
-        tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false }); });
-        localStorage.setItem(`lastDailyReset_${user.uid}`, todayStr);
-      }
-      if (localStorage.getItem(`lastWeeklyReset_${user.uid}`) !== currentWeek) {
-        tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'weekly' && (t.isDone || t.isApproved)) update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false }); });
-        localStorage.setItem(`lastWeeklyReset_${user.uid}`, currentWeek);
-      }
-      if (localStorage.getItem(`lastMonthlyReset_${user.uid}`) !== currentMonth) {
-        tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'monthly' && (t.isDone || t.isApproved)) update(ref(db, `${userBasePath}/tasks/${t.id}`), { isDone: false, isApproved: false }); });
-        localStorage.setItem(`lastMonthlyReset_${user.uid}`, currentMonth);
-      }
+      // PUSAT SINKRONISASI RESET VIA FIREBASE (Menggantikan localStorage)
+      get(ref(db, `${userBasePath}/system`)).then((snap) => {
+        const sys = snap.val() || {};
+        let updates: any = {};
+        let needUpdate = false;
+
+        if (sys.lastDaily !== todayStr) {
+          tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'daily' && (t.isDone || t.isApproved)) { updates[`tasks/${t.id}/isDone`] = false; updates[`tasks/${t.id}/isApproved`] = false; } });
+          updates['system/lastDaily'] = todayStr;
+          needUpdate = true;
+        }
+        if (sys.lastWeekly !== currentWeek) {
+          tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'weekly' && (t.isDone || t.isApproved)) { updates[`tasks/${t.id}/isDone`] = false; updates[`tasks/${t.id}/isApproved`] = false; } });
+          updates['system/lastWeekly'] = currentWeek;
+          needUpdate = true;
+        }
+        if (sys.lastMonthly !== currentMonth) {
+          tData.forEach(t => { if (t.type === 'Daily' && t.recurrence === 'monthly' && (t.isDone || t.isApproved)) { updates[`tasks/${t.id}/isDone`] = false; updates[`tasks/${t.id}/isApproved`] = false; } });
+          updates['system/lastMonthly'] = currentMonth;
+          needUpdate = true;
+        }
+
+        if (needUpdate) {
+          update(ref(db, userBasePath), updates);
+        }
+      });
     });
 
     return () => { unsubPremium(); unsubWheel(); unsubProfiles(); unsubTasks(); unsubRewards(); unsubStats(); };
-  }, [user]);
+  }, [user, isAdmin]);
 
   const [profileForm, setProfileForm] = useState({ name: '', role: '', maxStars: 50, avatar: '👶', theme: 'from-pink-500 to-rose-400' });
   const [taskForm, setTaskForm] = useState({ title: '', type: 'Daily', recurrence: 'daily', reward: 2, assignedTo: 'all' });
@@ -430,7 +457,6 @@ export default function App() {
     setIsSpinning(true);
     playSound('spin');
 
-    // Tambahan Loop Sound Efek "Tek-Tek-Tek"
     let tickCount = 0;
     const tickInterval = setInterval(() => {
       playSound('tick');
@@ -486,10 +512,71 @@ export default function App() {
     }, 4000);
   };
 
-  if (loadingAuth || loadingPremium) {
+  if (loadingAuth || (loadingPremium && !isAdmin)) {
     return (
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
          <div className="text-center space-y-3"><div className="text-6xl animate-spin">🌟</div><p className="animate-pulse font-sans tracking-normal">MEMUAT StarJar...</p></div>
+      </div>
+    );
+  }
+
+  // TAMPILAN PANEL ADMIN RAHASIA JIKA LOGIN MENGGUNAKAN ADMIN_EMAILS
+  if (user && isAdmin) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] p-4 md:p-8 text-slate-100 font-sans">
+         <div className="max-w-6xl mx-auto bg-slate-800 rounded-3xl p-6 md:p-8 border border-slate-700 shadow-2xl">
+           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+             <div>
+               <h1 className="text-3xl font-black text-amber-400 flex items-center gap-2"><span className="text-4xl">🛡️</span> Panel Admin Rahasia</h1>
+               <p className="text-slate-400 text-sm mt-1">FORLESS Agency - Kelola akses Premium untuk semua pendaftar StarJar.</p>
+             </div>
+             <button onClick={handleLogout} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 px-6 py-2.5 rounded-xl font-bold border border-red-500/30 transition-all shadow-sm">Keluar Admin</button>
+           </div>
+
+           <div className="overflow-x-auto bg-slate-900/50 rounded-2xl border border-slate-700 shadow-inner">
+             <table className="w-full text-left border-collapse">
+               <thead>
+                 <tr className="bg-slate-900/80 border-b border-slate-700">
+                   <th className="p-4 text-slate-400 font-black text-sm uppercase tracking-wider">Email Pengguna</th>
+                   <th className="p-4 text-slate-400 font-black text-sm uppercase tracking-wider hidden md:table-cell">UID Firebase</th>
+                   <th className="p-4 text-slate-400 font-black text-sm uppercase tracking-wider">Status Akun</th>
+                   <th className="p-4 text-slate-400 font-black text-sm uppercase tracking-wider text-right">Aksi (ACC)</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {Object.keys(allUsersData).map(uid => {
+                   const uData = allUsersData[uid];
+                   const isPrem = !!uData.isPremium;
+                   // Sembunyikan akun admin sendiri dari daftar ACC biar rapi
+                   if (ADMIN_EMAILS.includes(uData.email)) return null; 
+
+                   return (
+                     <tr key={uid} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
+                       <td className="p-4 font-bold text-white text-sm">{uData.email || 'Tanpa Email (Error)'}</td>
+                       <td className="p-4 text-xs text-slate-500 font-mono hidden md:table-cell">{uid}</td>
+                       <td className="p-4">
+                         {isPrem ? <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider shadow-sm">PREMIUM</span> : <span className="bg-slate-700 text-slate-400 px-3 py-1 rounded-md border border-slate-600 text-[10px] font-black uppercase tracking-wider shadow-sm">PENDING</span>}
+                       </td>
+                       <td className="p-4 text-right">
+                         <button
+                           onClick={() => update(ref(db, `users/${uid}`), { isPremium: !isPrem })}
+                           className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow-md ${isPrem ? 'bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-600' : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:scale-105 text-white active:scale-95'}`}
+                         >
+                           {isPrem ? 'Cabut Akses ✖️' : '✅ ACC Premium'}
+                         </button>
+                       </td>
+                     </tr>
+                   );
+                 })}
+                 {Object.keys(allUsersData).filter(uid => !ADMIN_EMAILS.includes(allUsersData[uid]?.email)).length === 0 && (
+                   <tr>
+                     <td colSpan={4} className="p-8 text-center text-slate-500 font-medium italic">Belum ada user yang terdaftar di database.</td>
+                   </tr>
+                 )}
+               </tbody>
+             </table>
+           </div>
+         </div>
       </div>
     );
   }
@@ -631,6 +718,7 @@ export default function App() {
                     <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
                       {childRoutines.map(item => {
                         const rewardDisplay = isMultiplierActive ? Math.ceil(item.reward * 1.5) : item.reward;
+                        // SINKRONISASI UI PC/HP: JIKA ISAPPROVED = TRUE MAKA TAMPIL "Selesai 🌟" BUKAN "Ditinjau" LAGI
                         return (
                           <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-slate-900/80 text-slate-200 shadow-sm gap-2">
                             <div className="flex-1 min-w-0">
@@ -641,8 +729,8 @@ export default function App() {
                                 {isMultiplierActive && <span className="text-[8px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-1.5 py-0.5 rounded animate-pulse shadow-md border border-red-400/50">🔥 1.5X BONUS</span>}
                               </div>
                             </div>
-                            <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
-                              {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
+                            <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone || item.isApproved} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isApproved ? 'bg-green-600/30 text-green-400 cursor-not-allowed shadow-none' : item.isDone ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 active:scale-95'}`}>
+                              {item.isApproved ? 'Selesai 🌟' : item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
                             </button>
                           </div>
                         );
@@ -661,6 +749,7 @@ export default function App() {
                     <div className="p-2 border-t border-slate-700/50 space-y-2 bg-slate-950/30 animate-fade-in">
                       {childAchievements.map(item => {
                         const rewardDisplay = isMultiplierActive ? Math.ceil(item.reward * 1.5) : item.reward;
+                        // SINKRONISASI UI PC/HP: JIKA ISAPPROVED = TRUE MAKA TAMPIL "Selesai 🌟" BUKAN "Ditinjau" LAGI
                         return (
                           <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-700/80 bg-slate-900/80 text-slate-200 shadow-sm gap-2">
                             <div className="flex-1 min-w-0">
@@ -671,8 +760,8 @@ export default function App() {
                                 {isMultiplierActive && <span className="text-[8px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-1.5 py-0.5 rounded animate-pulse shadow-md border border-red-400/50">🔥 1.5X BONUS</span>}
                               </div>
                             </div>
-                            <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isDone ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
-                              {item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
+                            <button onClick={() => handleCompleteTask(item.id, profile.id)} disabled={item.isDone || item.isApproved} className={`px-2.5 py-1.5 rounded-lg font-black text-[10px] transition-all whitespace-nowrap shadow-sm ${item.isApproved ? 'bg-green-600/30 text-green-400 cursor-not-allowed shadow-none' : item.isDone ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white active:scale-95'}`}>
+                              {item.isApproved ? 'Selesai 🌟' : item.isDone ? 'Ditinjau ⏳' : `Selesai ✔️`}
                             </button>
                           </div>
                         );
@@ -1095,9 +1184,9 @@ export default function App() {
       {celebration && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none bg-slate-900/70 backdrop-blur-md transition-opacity duration-500">
           
-          {celebration === 'reward' && <img src="/Icon Hadiah.png" className="w-[50vw] max-w-[400px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />}
+          {celebration === 'reward' && <img src="/Icon Hadiah.png" className="w-[50vw] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Klaim Hadiah!" />}
           
-          {celebration === 'task' && <img src="/Icon Menang.png" className="w-[50vw] max-w-[400px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />}
+          {celebration === 'task' && <img src="/Icon Menang.png" className="w-[75vw] max-w-[600px] h-auto animate-bounce-soft drop-shadow-[0_0_50px_rgba(250,204,21,0.5)] object-contain" alt="Misi Selesai!" />}
           
           {celebration === 'ticket' && (
             <div className="flex flex-col items-center animate-bounce-soft">
