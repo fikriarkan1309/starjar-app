@@ -402,7 +402,19 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+// EFEK KHUSUS TUTORIAL (Berdiri sendiri, muncul pas user udah login)
+useEffect(() => {
+  if (!user || !isPremium) return; // Tunggu sampai user login dan akun premium aktif
 
+  const systemRef = ref(db, `users/${user.uid}/system`);
+  get(systemRef).then((snap) => {
+    const sys = snap.val() || {};
+    // Kalau belum pernah selesai tour, langsung munculin
+    if (sys.isTourFinished !== true) {
+      setShowTour(true);
+    }
+  });
+}, [user, isPremium]); // Jalan otomatis pas user login
   useEffect(() => {
     if (isAdmin) {
       const unsubAll = onValue(ref(db, 'users'), (snap) => {
@@ -1185,7 +1197,7 @@ export default function App() {
           return (
             <div
               key={profile.id}
-              className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-hidden border border-slate-700/60 backdrop-blur-md text-slate-100"
+              className="w-full md:w-[350px] md:flex-shrink-0 bg-slate-800/60 rounded-[3rem] p-6 md:p-7 shadow-2xl flex flex-col gap-6 relative overflow-visible border border-slate-700/60 backdrop-blur-md text-slate-100"
             >
               <div className="absolute top-5 left-5 z-30 flex flex-col items-center">
                 <div className="bg-slate-900/80 border border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.3)] px-3 py-1.5 rounded-2xl flex items-center gap-1.5 transform hover:scale-105 transition-transform cursor-default">
