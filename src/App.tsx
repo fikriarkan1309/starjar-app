@@ -2107,7 +2107,7 @@ export default function App() {
                   </form>
                   <div className="space-y-3">
                     {tasks.map((t) => {
-                      const child = profiles.find((p) => String(p.id) === String(t.assignedTo));
+                      const _child = profiles.find((p) => String(p.id) === String(t.assignedTo));
                       return (
                         <div key={t.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60">
                           {editingTaskId === t.id ? (
