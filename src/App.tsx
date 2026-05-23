@@ -1,3 +1,5 @@
+import { AvatarDisplay } from './components/AvatarDisplay';
+import { AvatarSelector } from './components/AvatarSelector';
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
@@ -300,7 +302,12 @@ const TutorialTooltip = ({ title, content }: { title: string; content: string })
 );
 
 export default function App() {
-  const avatarOptions = ['👶', '👧', '👦', '👸', '🤴', '🦸‍♀️', '🦸‍♂️', '🥷', '🦁', '🐼', '🦊', '🐸'];
+  const avatarOptions = [
+    '/avatars/boy1.png', '/avatars/boy2.png', '/avatars/boy3.png', '/avatars/boy4.png', '/avatars/boy5.png',
+    '/avatars/boy6.png', '/avatars/boy7.png', '/avatars/boy8.png', '/avatars/boy9.png', '/avatars/boy10.png',
+    '/avatars/girl1.png', '/avatars/girl2.png', '/avatars/girl3.png', '/avatars/girl4.png', '/avatars/girl5.png',
+    '/avatars/girl6.png', '/avatars/girl7.png', '/avatars/girl8.png', '/avatars/girl9.png', '/avatars/girl10.png'
+  ];
   const themeOptions = [
     { value: 'from-pink-500 to-rose-400', label: '🩷 Pink Ceria' },
     { value: 'from-cyan-500 to-blue-400', label: '🩵 Biru Samudra' },
@@ -1238,10 +1245,8 @@ useEffect(() => {
               </div>
 
               <div className="flex flex-col items-center justify-center text-center space-y-3 pt-4">
-                <div
-                  className={`p-4 rounded-3xl bg-gradient-to-br ${profile.theme} shadow-lg flex items-center justify-center min-w-[90px] min-h-[90px]`}
-                >
-                  <span className="text-5xl block filter drop-shadow">{profile.avatar}</span>
+                <div className={`p-4 rounded-3xl bg-gradient-to-br ${profile.theme} shadow-lg flex items-center justify-center min-w-[90px] min-h-[90px]`}>
+                  <AvatarDisplay avatar={profile.avatar} />
                 </div>
                 <div>
                   <h2 className="text-2xl font-black text-white">{profile.name}</h2>
@@ -1598,7 +1603,7 @@ useEffect(() => {
                     <div key={p.id} className="space-y-2">
                       <div className="flex justify-between items-center text-xs font-bold">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-base">{p.avatar}</span>
+                          <AvatarDisplay avatar={p.avatar} className="w-5 h-5" />
                           <span className="text-white">{p.name}</span>
                         </div>
                         <div className="text-right">
@@ -1719,7 +1724,7 @@ useEffect(() => {
                     <div key={profile.id} className="relative">
                       <div className="flex items-center gap-3 mb-4 border-b border-slate-700/60 pb-3">
                         <div className={`p-2 rounded-xl bg-gradient-to-br ${profile.theme} shadow-lg`}>
-                          <span className="text-xl block filter drop-shadow">{profile.avatar}</span>
+                          <AvatarDisplay avatar={profile.avatar} className="w-8 h-8" />
                         </div>
                         <h3 className="text-lg font-black text-white">{profile.name}</h3>
                       </div>
@@ -1767,7 +1772,10 @@ useEffect(() => {
                       className="flex flex-col sm:flex-row justify-between sm:items-center p-4 rounded-2xl bg-slate-900 border border-slate-700 gap-4"
                     >
                       <div>
-                        <p className="text-slate-400 text-xs">{child?.name || 'Anak'}</p>
+                        <div className="flex items-center gap-1.5 mb-1">
+                         {child?.avatar && <AvatarDisplay avatar={child.avatar} className="w-4 h-4" />}
+                         <p className="text-slate-400 text-xs font-bold">{child?.name || 'Anak'}</p>
+                        </div>
                         <p className="text-base font-bold text-white">{task.title}</p>
                         {isMultiplier && (
                           <span className="text-[10px] font-black text-white bg-gradient-to-r from-red-500 to-orange-500 px-2 py-0.5 rounded-md mt-1 inline-block animate-pulse shadow-md">
@@ -1814,7 +1822,10 @@ useEffect(() => {
                       className="flex justify-between items-center p-4 rounded-2xl bg-slate-900 border border-slate-700"
                     >
                       <div>
-                        <p className="text-slate-400 text-xs">{child?.name || 'Anak'}</p>
+                      <div className="flex items-center gap-1.5 mb-1">
+                       {child?.avatar && <AvatarDisplay avatar={child.avatar} className="w-4 h-4" />}
+                       <p className="text-slate-400 text-xs font-bold">{child?.name || 'Anak'}</p>
+                      </div>
                         <p className="text-base font-bold text-white">{rew.title}</p>
                       </div>
                       <button
@@ -1854,10 +1865,11 @@ useEffect(() => {
               {showChildForm && (
                 <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-6 animate-fade-in">
                   <form
-                    onSubmit={handleAddProfile}
+                    onSubmit={(e) => { e.preventDefault(); handleAddProfile(); }} // Pastikan fungsi submit lu di sini
                     className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700"
                   >
-                    <div className="flex flex-col sm:flex-row gap-4">
+                    {/* Baris 1: Nama & Role */}
+                    <div className="flex gap-4">
                       <div className="flex-1">
                         <label className="text-xs text-slate-400 mb-1 block">Nama</label>
                         <input
@@ -1878,34 +1890,20 @@ useEffect(() => {
                         />
                       </div>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      <div className="w-full sm:w-1/4">
+
+                    {/* Baris 2: Max Bintang & Tema Warna */}
+                    <div className="flex gap-4">
+                      <div className="w-1/3">
                         <label className="text-xs text-slate-400 mb-1 block">Target Maks</label>
                         <input
                           type="number"
                           required
                           value={profileForm.maxStars}
-                          onChange={(e) =>
-                            setProfileForm({ ...profileForm, maxStars: Number(e.target.value) })
-                          }
+                          onChange={(e) => setProfileForm({ ...profileForm, maxStars: Number(e.target.value) })}
                           className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-yellow-400 text-center font-bold"
                         />
                       </div>
-                      <div className="w-full sm:w-1/4">
-                        <label className="text-xs text-slate-400 mb-1 block">Avatar</label>
-                        <select
-                          value={profileForm.avatar}
-                          onChange={(e) => setProfileForm({ ...profileForm, avatar: e.target.value })}
-                          className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white text-xl cursor-pointer"
-                        >
-                          {avatarOptions.map((av) => (
-                            <option key={av} value={av}>
-                              {av}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="w-full sm:w-1/2">
+                      <div className="w-2/3">
                         <label className="text-xs text-slate-400 mb-1 block">Tema Warna</label>
                         <select
                           value={profileForm.theme}
@@ -1920,57 +1918,61 @@ useEffect(() => {
                         </select>
                       </div>
                     </div>
-                    <button
-                      type="submit"
-                      className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-3 rounded-xl shadow-md"
-                    >
-                      + Tambah Profil
+
+                    {/* Baris 3: Pilih Avatar */}
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Pilih Avatar</label>
+                      <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700">
+                        <AvatarSelector 
+                          selected={profileForm.avatar} 
+                          options={avatarOptions} 
+                          onSelect={(av) => setProfileForm({...profileForm, avatar: av})} 
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Tombol Simpan */}
+                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl mt-2 transition-all">
+                      Simpan Profil
                     </button>
                   </form>
                   <div className="space-y-3">
                     {profiles.map((p) => (
                       <div key={p.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60">
                         {editingProfileId === p.id ? (
-                          <div className="space-y-3 text-xs animate-fade-in">
+                          <div className="space-y-4 text-xs animate-fade-in w-full">
+                            {/* Baris 1: Nama & Role */}
                             <div className="flex gap-2">
-                              <input
-                                type="text"
-                                className="flex-1 bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold"
-                                value={editProfileForm.name || ''}
-                                onChange={(e) =>
-                                  setEditProfileForm({ ...editProfileForm, name: e.target.value })
-                                }
-                              />
-                              <input
-                                type="text"
-                                className="flex-1 bg-slate-800 border border-slate-600 p-2 rounded-lg text-white"
-                                value={editProfileForm.role || ''}
-                                onChange={(e) =>
-                                  setEditProfileForm({ ...editProfileForm, role: e.target.value })
-                                }
-                              />
+                              <input type="text" className="flex-1 bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editProfileForm.name || ''} onChange={e => setEditProfileForm({...editProfileForm, name: e.target.value})} placeholder="Nama Anak" />
+                              <input type="text" className="flex-1 bg-slate-800 border border-slate-600 p-2 rounded-lg text-white" value={editProfileForm.role || ''} onChange={e => setEditProfileForm({...editProfileForm, role: e.target.value})} placeholder="Role (Anak)" />
+                            </div>
+                            {/* Baris 2: Target Bintang & Tema */}
+                            <div className="flex gap-2">
+                              <div className="w-1/3">
+                                <label className="text-[10px] text-slate-400 mb-1 block">Max Bintang</label>
+                                <input type="number" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-yellow-400 font-bold" value={editProfileForm.maxStars || 50} onChange={e => setEditProfileForm({...editProfileForm, maxStars: Number(e.target.value)})} />
+                              </div>
+                              <div className="w-2/3">
+                                <label className="text-[10px] text-slate-400 mb-1 block">Tema Warna</label>
+                                <select className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white" value={editProfileForm.theme || ''} onChange={e => setEditProfileForm({...editProfileForm, theme: e.target.value})}>
+                                 {themeOptions.map(th => <option key={th.value} value={th.value}>{th.label}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            {/* Baris 3: Ganti Avatar */}
+                            <div className="w-full bg-slate-900/50 p-2 rounded-xl border border-slate-700/50">
+                               <label className="text-[10px] text-slate-400 mb-2 block">Ganti Avatar</label>
+                               <AvatarSelector selected={editProfileForm.avatar || ''} options={avatarOptions} onSelect={(av) => setEditProfileForm({...editProfileForm, avatar: av})} />
                             </div>
                             <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50">
-                              <button
-                                type="button"
-                                onClick={() => setEditingProfileId(null)}
-                                className="text-slate-400 font-bold px-3 py-1.5"
-                              >
-                                Batal
-                              </button>
-                              <button
-                                type="button"
-                                onClick={saveEditProfile}
-                                className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black shadow-md"
-                              >
-                                Simpan
-                              </button>
+                               <button type="button" onClick={() => setEditingProfileId(null)} className="text-slate-400 font-bold px-3 py-1.5 hover:text-white">Batal</button>
+                               <button type="button" onClick={saveEditProfile} className="bg-blue-600 hover:bg-blue-500 px-5 py-1.5 rounded-xl text-white font-black shadow-md">Simpan</button>
                             </div>
                           </div>
                         ) : (
                           <div className="flex justify-between items-center text-sm">
                             <div className="flex items-center gap-2">
-                              <span className="text-xl">{p.avatar}</span>
+                              <AvatarDisplay avatar={p.avatar} className="w-6 h-6" />
                               <span className="text-white font-bold">{p.name}</span>
                             </div>
                             <div className="flex gap-3 text-xs font-bold">
@@ -2124,29 +2126,46 @@ useEffect(() => {
                         <div key={t.id} className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60">
                           {editingTaskId === t.id ? (
                             <div className="space-y-3 text-xs animate-fade-in w-full">
+                              {/* Baris 1: Nama Misi */}
                               <div>
-                                <input
-                                  type="text"
-                                  className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold"
-                                  value={editTaskForm.title || ''}
-                                  onChange={(e) => setEditTaskForm({ ...editTaskForm, title: e.target.value })}
-                                />
+                                <label className="text-[10px] text-slate-400 block mb-1">Nama Misi</label>
+                                <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editTaskForm.title || ''} onChange={e => setEditTaskForm({ ...editTaskForm, title: e.target.value })} />
                               </div>
-                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50">
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingTaskId(null)}
-                                  className="text-slate-400 font-bold px-3 py-1.5"
-                                >
-                                  Batal
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={saveEditTask}
-                                  className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black"
-                                >
-                                  Simpan
-                                </button>
+                              {/* Baris 2: Jenis & Siklus & Hadiah */}
+                              <div className="flex gap-2">
+                                <div className="flex-1">
+                                  <label className="text-[10px] text-slate-400 block mb-1">Jenis</label>
+                                  <select value={editTaskForm.type || 'Daily'} onChange={e => setEditTaskForm({ ...editTaskForm, type: e.target.value })} className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white">
+                                    <option value="Daily">🔄 Rutinitas</option>
+                                    <option value="Achievement">🏆 Tantangan</option>
+                                  </select>
+                                </div>
+                                {editTaskForm.type === 'Daily' && (
+                                  <div className="flex-1">
+                                    <label className="text-[10px] text-slate-400 block mb-1">Siklus</label>
+                                    <select value={editTaskForm.recurrence || 'daily'} onChange={e => setEditTaskForm({ ...editTaskForm, recurrence: e.target.value })} className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white">
+                                      <option value="daily">Harian</option>
+                                      <option value="weekly">Mingguan</option>
+                                      <option value="monthly">Bulanan</option>
+                                    </select>
+                                  </div>
+                                )}
+                                <div className="w-20">
+                                  <label className="text-[10px] text-slate-400 block mb-1">Hadiah</label>
+                                  <input type="number" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-yellow-400 font-bold text-center" value={editTaskForm.reward || 0} onChange={e => setEditTaskForm({ ...editTaskForm, reward: Number(e.target.value) })} />
+                                </div>
+                              </div>
+                              {/* Baris 3: Ditugaskan ke */}
+                              <div>
+                                <label className="text-[10px] text-slate-400 block mb-1">Tugaskan Ke</label>
+                                <select value={editTaskForm.assignedTo || 'all'} onChange={e => setEditTaskForm({ ...editTaskForm, assignedTo: e.target.value })} className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white">
+                                  <option value="all">🌟 Semua Anak</option>
+                                  {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50 mt-2">
+                                <button type="button" onClick={() => setEditingTaskId(null)} className="text-slate-400 font-bold px-3 py-1.5 hover:text-white">Batal</button>
+                                <button type="button" onClick={saveEditTask} className="bg-blue-600 hover:bg-blue-500 px-5 py-1.5 rounded-xl text-white font-black shadow-md">Simpan</button>
                               </div>
                             </div>
                           ) : (
@@ -2281,30 +2300,31 @@ useEffect(() => {
                         className="p-4 rounded-2xl border border-slate-700 bg-slate-900/60 flex justify-between items-center text-sm"
                       >
                         {editingRewardId === r.id ? (
-                          <div className="space-y-3 text-xs w-full animate-fade-in">
+                          <div className="space-y-3 text-xs animate-fade-in w-full bg-slate-900/50 p-3 rounded-xl border border-slate-700 mt-2">
+                            {/* Baris 1: Nama Hadiah */}
                             <div>
-                              <input
-                                type="text"
-                                className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold"
-                                value={editRewardForm.title || ''}
-                                onChange={(e) => setEditRewardForm({ ...editRewardForm, title: e.target.value })}
-                              />
+                              <label className="text-[10px] text-slate-400 block mb-1">Nama Hadiah</label>
+                              <input type="text" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white font-bold" value={editRewardForm.title || ''} onChange={e => setEditRewardForm({ ...editRewardForm, title: e.target.value })} />
                             </div>
+                            
+                            {/* Baris 2: Untuk Anak & Harga Bintang */}
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <label className="text-[10px] text-slate-400 block mb-1">Untuk Anak</label>
+                                <select value={editRewardForm.assignedTo || 'all'} onChange={e => setEditRewardForm({ ...editRewardForm, assignedTo: e.target.value })} className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-white">
+                                  <option value="all">🌟 Semua Anak</option>
+                                  {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="w-20">
+                                <label className="text-[10px] text-slate-400 block mb-1">Harga Bintang</label>
+                                <input type="number" className="w-full bg-slate-800 border border-slate-600 p-2 rounded-lg text-yellow-400 font-bold text-center" value={editRewardForm.cost || 0} onChange={e => setEditRewardForm({ ...editRewardForm, cost: Number(e.target.value) })} />
+                              </div>
+                            </div>
+                            
                             <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/50 mt-2">
-                              <button
-                                type="button"
-                                onClick={() => setEditingRewardId(null)}
-                                className="text-slate-400 font-bold px-3 py-1.5"
-                              >
-                                Batal
-                              </button>
-                              <button
-                                type="button"
-                                onClick={saveEditReward}
-                                className="bg-blue-600 px-4 py-1.5 rounded-xl text-white font-black"
-                              >
-                                Simpan
-                              </button>
+                              <button type="button" onClick={() => setEditingRewardId(null)} className="text-slate-400 font-bold px-4 py-2 hover:text-white bg-slate-800 rounded-lg">Batal</button>
+                              <button type="button" onClick={saveEditReward} className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-white font-black shadow-md">Simpan</button>
                             </div>
                           </div>
                         ) : (
@@ -2358,78 +2378,60 @@ useEffect(() => {
               </button>
               {showWheelForm && (
                 <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-4 animate-fade-in">
-                  <div className="space-y-3">
-                    {wheelPrizes.map((wp, i) => (
-                      <div
-                        key={i}
-                        className="flex flex-col md:flex-row gap-2 bg-slate-900/40 p-3 rounded-xl border border-slate-700"
-                      >
-                        <div className="flex-1">
-                          <input
-                            type="text"
-                            value={wp.label}
-                            onChange={(e) => {
-                              const newP = [...wheelPrizes];
-                              newP[i].label = e.target.value;
-                              setWheelPrizes(newP);
-                            }}
-                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs"
-                          />
-                        </div>
-                        <div className="w-full md:w-1/5">
-                          <select
-                            value={wp.type}
-                            onChange={(e) => {
-                              const newP = [...wheelPrizes];
-                              newP[i].type = e.target.value;
-                              setWheelPrizes(newP);
-                            }}
-                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs"
-                          >
-                            <option value="star">+ Bintang</option>
-                            <option value="reward">Hadiah</option>
-                            <option value="zonk">Zonk</option>
-                          </select>
-                        </div>
-                        <div className="w-full md:w-1/5">
-                          <input
-                            type="text"
-                            value={wp.val}
-                            onChange={(e) => {
-                              const newP = [...wheelPrizes];
-                              newP[i].val = e.target.value;
-                              setWheelPrizes(newP);
-                            }}
-                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs"
-                          />
-                        </div>
-                        <div className="w-full md:w-[60px]">
-                          <input
-                            type="color"
-                            value={wp.color}
-                            onChange={(e) => {
-                              const newP = [...wheelPrizes];
-                              newP[i].color = e.target.value;
-                              setWheelPrizes(newP);
-                            }}
-                            className="w-full h-8 cursor-pointer rounded-lg border border-slate-600 p-0.5 bg-slate-800"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await update(ref(db, `users/${user.uid}`), { wheelPrizes });
-                      alert('Disimpan!');
-                    }}
-                    className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-3 rounded-xl shadow-md mt-4"
-                  >
-                    💾 Simpan Roda Gacha
-                  </button>
+    
+                {/* HEADER UNTUK DESKTOP (SESUAI REQUEST NAMA KOLOMNYA) */}
+                <div className="hidden md:flex gap-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">
+                  <div className="flex-1">Tulisan di Roda</div>
+                  <div className="w-[120px]">Jenis</div>
+                  <div className="w-[120px]">Tulisan di Hadiah</div>
+                  <div className="w-[80px]">Persen (%)</div>
+                  <div className="w-[60px]">Warna</div>
                 </div>
-              )}
+            
+                {/* ISI DAFTAR RODA GACHA */}
+                <div className="space-y-3">
+                  {wheelPrizes.map((wp, i) => (
+                    <div key={i} className="flex flex-col md:flex-row gap-2 bg-slate-900/40 p-3 rounded-xl border border-slate-700 items-center">
+                      
+                      <div className="flex-1 w-full">
+                        <label className="md:hidden text-[10px] text-slate-400 block mb-1">Tulisan di Roda</label>
+                        <input type="text" value={wp.label} onChange={e => { const newP = [...wheelPrizes] as any[]; newP[i].label = e.target.value; setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-xs font-bold" />
+                      </div>
+                      
+                      <div className="w-full md:w-[120px]">
+                        <label className="md:hidden text-[10px] text-slate-400 block mb-1">Jenis</label>
+                        <select value={wp.type} onChange={e => { const newP = [...wheelPrizes] as any[]; newP[i].type = e.target.value; setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-xs">
+                          <option value="star">+ Bintang</option>
+                          <option value="reward">Hadiah</option>
+                          <option value="zonk">Zonk</option>
+                        </select>
+                      </div>
+                      
+                      <div className="w-full md:w-[120px]">
+                        <label className="md:hidden text-[10px] text-slate-400 block mb-1">Tulisan di Hadiah</label>
+                        <input type="text" value={wp.val} onChange={e => { const newP = [...wheelPrizes] as any[]; newP[i].val = e.target.value; setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-xs" />
+                      </div>
+                      
+                      <div className="w-full md:w-[80px]">
+                        <label className="md:hidden text-[10px] text-slate-400 block mb-1">Persen (%)</label>
+                        <input type="number" value={(wp as any).prob || 0} onChange={e => { const newP = [...wheelPrizes] as any[]; newP[i].prob = Number(e.target.value); setWheelPrizes(newP); }} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-yellow-400 font-bold text-xs text-center" />
+                      </div>
+                      
+                      <div className="w-full md:w-[60px] flex items-center justify-between md:justify-center mt-2 md:mt-0">
+                        <label className="md:hidden text-[10px] text-slate-400 block">Warna</label>
+                        <input type="color" value={wp.color} onChange={e => { const newP = [...wheelPrizes] as any[]; newP[i].color = e.target.value; setWheelPrizes(newP); }} className="w-10 h-10 cursor-pointer rounded-lg border-2 border-slate-600 p-0.5 bg-slate-800" />
+                      </div>
+                      
+                    </div>
+                  ))}
+                </div>
+                
+                <button type="button" onClick={async () => { await update(ref(db, `users/${user.uid}`), { wheelPrizes }); alert("Disimpan!"); }} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-3 rounded-xl shadow-md mt-4 transition-all">
+                  💾 Simpan Roda Gacha
+                </button>
+                
+              </div>
+            )}
             </div>
 
             <div className="pt-6 border-t border-slate-700/40 flex justify-center">
