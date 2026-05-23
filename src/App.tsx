@@ -1865,7 +1865,7 @@ useEffect(() => {
               {showChildForm && (
                 <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-6 animate-fade-in">
                   <form
-                    onSubmit={(e) => { e.preventDefault(); handleAddProfile(); }} 
+                    onSubmit={(e) => { e.preventDefault(); handleAddProfile(); }}
                     className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700"
                   >
                     {/* Baris 1: Nama & Role */}
@@ -1875,7 +1875,7 @@ useEffect(() => {
                         <input
                           type="text"
                           required
-                          value={profileForm.name}
+                          value={profileForm.name || ''}
                           onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-medium"
                         />
@@ -1884,36 +1884,34 @@ useEffect(() => {
                         <label className="text-xs text-slate-400 mb-1 block">Role</label>
                         <input
                           type="text"
-                          value={profileForm.role}
+                          value={profileForm.role || ''}
                           onChange={(e) => setProfileForm({ ...profileForm, role: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-medium"
                         />
                       </div>
                     </div>
 
-                    {/* Baris 2: Max Bintang & Tema Warna */}
+                    {/* Baris 2: Target & Tema */}
                     <div className="flex gap-4">
                       <div className="w-1/3">
                         <label className="text-xs text-slate-400 mb-1 block">Target Maks</label>
                         <input
                           type="number"
                           required
-                          value={profileForm.maxStars}
+                          value={profileForm.maxStars || 50}
                           onChange={(e) => setProfileForm({ ...profileForm, maxStars: Number(e.target.value) })}
                           className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-yellow-400 text-center font-bold"
                         />
                       </div>
-                      <div className="w-2/3">
+                      <div className="flex-1">
                         <label className="text-xs text-slate-400 mb-1 block">Tema Warna</label>
                         <select
-                          value={profileForm.theme}
+                          value={profileForm.theme || ''}
                           onChange={(e) => setProfileForm({ ...profileForm, theme: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white font-medium cursor-pointer"
                         >
                           {themeOptions.map((th) => (
-                            <option key={th.value} value={th.value}>
-                              {th.label}
-                            </option>
+                            <option key={th.value} value={th.value}>{th.label}</option>
                           ))}
                         </select>
                       </div>
@@ -1924,14 +1922,13 @@ useEffect(() => {
                       <label className="text-xs text-slate-400 mb-1 block">Pilih Avatar</label>
                       <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700">
                         <AvatarSelector 
-                          selected={profileForm.avatar} 
+                          selected={profileForm.avatar || avatarOptions[0]} 
                           options={avatarOptions} 
                           onSelect={(av) => setProfileForm({...profileForm, avatar: av})} 
                         />
                       </div>
                     </div>
                     
-                    {/* Tombol Simpan */}
                     <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl mt-2 transition-all">
                       Simpan Profil
                     </button>
