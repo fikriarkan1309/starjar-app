@@ -1865,7 +1865,7 @@ useEffect(() => {
               {showChildForm && (
                 <div className="p-6 border-t border-slate-700/50 bg-slate-900/20 space-y-6 animate-fade-in">
                   <form
-                    onSubmit={(e) => { e.preventDefault(); handleAddProfile(); }} // Pastikan fungsi submit lu di sini
+                    onSubmit={(e) => { e.preventDefault(); handleAddProfile(); }} 
                     className="space-y-4 bg-slate-900/40 p-5 rounded-2xl border border-slate-700"
                   >
                     {/* Baris 1: Nama & Role */}
