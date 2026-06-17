@@ -449,6 +449,7 @@ useEffect(() => {
       ref(db, `${userBasePath}/premium`),
       snapshot=>{
         setIsPremium(!!snapshot.val())
+        setLoadingPremium(false)
       },
       error=>{
         console.log("premium error", error)
