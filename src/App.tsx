@@ -433,58 +433,29 @@ useEffect(() => {
   }, [isAdmin]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || isAdmin) {
+      setProfiles([]);
+      setTasks([]);
+      setRewards([]);
+      setStats({});
+      setIsPremium(false);
+      return;
+    }
 
-    const db = getDatabase();
     const userBasePath = `users/${user.uid}`;
-
-    // Nyalakan loading di awal
     setLoadingPremium(true);
-    setLoadingAuth(true);
 
-    // 🟢 SABUK PENGAMAN SAKTI: Paksa matiin loading jika Firebase nge-hang (Max 4 Detik)
-    const forceStopLoading = setTimeout(() => {
-      console.warn("Koneksi Firebase lambat/terblokir, memaksa masuk aplikasi...");
-      setLoadingPremium(false);
-      setLoadingAuth(false);
-    }, 4000);
-
-    // 🟢 JALUR TUNGGAL: Tarik semua data (termasuk isPremium) dalam satu pintu
-    const unsubData = onValue(
-      ref(db, userBasePath),
-      (snapshot) => {
-        clearTimeout(forceStopLoading); // Sukses dapet data? Batalin paksaan 4 detik di atas
-        const data = snapshot.val();
-        
-        if (data) {
-          setProfiles(data.profiles || []);
-          setTasks(data.tasks || []);
-          setRewards(data.rewards || []);
-          if (data.lang) setLang(data.lang);
-          setIsPremium(!!data.isPremium); // Langsung set status premium dari sini
-        } else {
-          setProfiles([]);
-          setTasks([]);
-          setRewards([]);
-          setIsPremium(false);
-        }
-        
-        // Matikan semua loading
-        setLoadingPremium(false);
-        setLoadingAuth(false);
+    const unsubPremium = onValue(
+      ref(db, `${userBasePath}/premium`),
+      snapshot=>{
+        setIsPremium(!!snapshot.val())
+        setLoadingPremium(false)
       },
-      (error) => {
-        clearTimeout(forceStopLoading);
-        console.error("Firebase Data Error:", error);
-        setLoadingPremium(false);
-        setLoadingAuth(false);
+      error=>{
+        console.log("premium error", error)
+        setLoadingPremium(false)
       }
-    );
-
-    return () => {
-      clearTimeout(forceStopLoading);
-      unsubData();
-    }; 
+     )
 
     const unsubWheel = onValue(ref(db, `${userBasePath}/wheelPrizes`), (snapshot) => {
       if (snapshot.exists()) {
@@ -615,6 +586,7 @@ useEffect(() => {
     });
 
     return () => {
+      unsubPremium();
       unsubWheel();
       unsubProfiles();
       unsubTasks();
