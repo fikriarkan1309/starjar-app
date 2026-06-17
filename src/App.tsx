@@ -323,7 +323,7 @@ export default function App() {
 
   const [user, setUser] = useState<any>(null);
   const [isPremium, setIsPremium] = useState<boolean>(false);
-
+  const [loadingPremium, setLoadingPremium] = useState<boolean>(true);
 
   const isAdmin = user && user.email && ADMIN_EMAILS.includes(user.email);
   const [allUsersData, setAllUsersData] = useState<any>({});
@@ -334,7 +334,7 @@ export default function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
-
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
   const [currentRole, setCurrentRole] = useState<'child' | 'parent'>('parent');
   const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
