@@ -445,10 +445,19 @@ useEffect(() => {
     const userBasePath = `users/${user.uid}`;
     setLoadingPremium(true);
 
-    const unsubPremium = onValue(ref(db, `${userBasePath}/isPremium`), (snapshot) => {
-      setIsPremium(!!snapshot.val());
-      setLoadingPremium(false);
-    });
+    const unsubPremium = onValue(
+      ref(db, `${userBasePath}/isPremium`), 
+      (snapshot) => {
+        // Kalau sukses dapet data, matikan loading
+        setIsPremium(!!snapshot.val());
+        setLoadingPremium(false);
+      },
+      (error) => {
+        // 🟢 TAMBAHAN SAKTI: Kalau Firebase nolak/error, TETAP matikan loading!
+        console.error("Firebase Error:", error);
+        setLoadingPremium(false); 
+      }
+    );
 
     const unsubWheel = onValue(ref(db, `${userBasePath}/wheelPrizes`), (snapshot) => {
       if (snapshot.exists()) {
