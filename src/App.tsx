@@ -466,8 +466,8 @@ useEffect(() => {
     });
 
     const unsubProfiles = onValue(ref(db, `${userBasePath}/profiles`), (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return setProfiles([]);
+      const data = snapshot.val() || {};
+      if (!data) return setProfiles(data.profiles || []);
 
       setProfiles(
         Object.keys(data).map(
@@ -494,8 +494,8 @@ useEffect(() => {
     });
 
     const unsubRewards = onValue(ref(db, `${userBasePath}/rewards`), (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return setRewards([]);
+      const data = snapshot.val() || {};
+      if (!data) return setRewards(data.rewards || []);
       setRewards(
         Object.keys(data).map(
           (key) =>
@@ -512,8 +512,8 @@ useEffect(() => {
     });
 
     const unsubTasks = onValue(ref(db, `${userBasePath}/tasks`), (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return setTasks([]);
+      const data = snapshot.val() || {};
+      if (!data) return setTasks(data.tasks || []);
       const tData = Object.keys(data).map(
         (key) =>
           ({
