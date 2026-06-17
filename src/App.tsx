@@ -440,13 +440,13 @@ useEffect(() => {
 
     // Nyalakan loading di awal
     setLoadingPremium(true);
-    setLoadingData(true);
+    setLoadingAuth(true);
 
     // 🟢 SABUK PENGAMAN SAKTI: Paksa matiin loading jika Firebase nge-hang (Max 4 Detik)
     const forceStopLoading = setTimeout(() => {
       console.warn("Koneksi Firebase lambat/terblokir, memaksa masuk aplikasi...");
       setLoadingPremium(false);
-      setLoadingData(false);
+      setLoadingAuth(false);
     }, 4000);
 
     // 🟢 JALUR TUNGGAL: Tarik semua data (termasuk isPremium) dalam satu pintu
@@ -471,13 +471,13 @@ useEffect(() => {
         
         // Matikan semua loading
         setLoadingPremium(false);
-        setLoadingData(false);
+        setLoadingAuth(false);
       },
       (error) => {
         clearTimeout(forceStopLoading);
         console.error("Firebase Data Error:", error);
         setLoadingPremium(false);
-        setLoadingData(false);
+        setLoadingAuth(false);
       }
     );
 
@@ -615,7 +615,6 @@ useEffect(() => {
     });
 
     return () => {
-      unsubPremium();
       unsubWheel();
       unsubProfiles();
       unsubTasks();
