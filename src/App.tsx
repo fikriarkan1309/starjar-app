@@ -484,8 +484,7 @@ useEffect(() => {
     return () => {
       clearTimeout(forceStopLoading);
       unsubData();
-    };
-  }, [user]);
+    }; 
 
     const unsubWheel = onValue(ref(db, `${userBasePath}/wheelPrizes`), (snapshot) => {
       if (snapshot.exists()) {
