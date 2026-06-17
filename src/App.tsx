@@ -980,7 +980,7 @@ useEffect(() => {
     }
   };
 
-  if (loadingAuth || (loadingPremium && !isAdmin)) {
+  if (false) {
     return (
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
         <div className="text-center space-y-3">
