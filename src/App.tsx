@@ -445,13 +445,16 @@ useEffect(() => {
     const userBasePath = `users/${user.uid}`;
     setLoadingPremium(true);
 
-    const unsubPremium = onValue(ref(db, `${userBasePath}/isPremium`), (snapshot) => {
-      setIsPremium(!!snapshot.val());
+    const unsubPremium = onValue(
+      ref(db, `${userBasePath}/premium`),
+      snapshot=>{
+        setIsPremium(!!snapshot.val())
+      },
       error=>{
         console.log("premium error", error)
         setLoadingPremium(false)
       }
-    });
+     )
 
     const unsubWheel = onValue(ref(db, `${userBasePath}/wheelPrizes`), (snapshot) => {
       if (snapshot.exists()) {
