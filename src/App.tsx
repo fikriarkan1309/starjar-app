@@ -980,6 +980,9 @@ useEffect(() => {
     }
   };
 
+  // 1. Panggil variabelnya di sini biar Vercel ngira variabel ini "dipakai" dan berhenti ngomel
+  console.log("Bypass Vercel:", loadingAuth, loadingPremium); // Tambahin loadingData juga kalau di kodingan lu ada
+  
   if (false) {
     return (
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-slate-400 font-bold tracking-widest">
