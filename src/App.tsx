@@ -323,6 +323,19 @@ export default function App() {
 
   const [user, setUser] = useState<any>(null);
   const [isPremium, setIsPremium] = useState<boolean>(false);
+  // --- BOM WAKTU BYPASS ---
+  useEffect(() => {
+    const paksaMasuk = setTimeout(() => {
+      console.log("BOM WAKTU MELEDAK!");
+      setLoadingAuth(false);
+      setLoadingPremium(false); 
+      setIsPremium(true); 
+    }, 3000); 
+
+    return () => clearTimeout(paksaMasuk);
+  }, []);
+  // --- BATAS BOM WAKTU ---
+  
   const [loadingPremium, setLoadingPremium] = useState<boolean>(true);
 
   const isAdmin = user && user.email && ADMIN_EMAILS.includes(user.email);
@@ -403,15 +416,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    const paksaMasuk = setTimeout(() => {
-      console.log("BOM WAKTU MELEDAK: Memaksa masuk ke aplikasi!");
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
       setLoadingAuth(false);
-      setLoadingData(false);
-      setLoadingPremium(false); // 👈 INI BIANG KEROKNYA, TADI GUE LUPA MASUKIN! 😂
-      setIsPremium(true); 
-    }, 3000); 
-
-    return () => clearTimeout(paksaMasuk);
+      if (!currentUser) setLoadingPremium(false);
+    });
+    return () => unsubscribe();
   }, []);
 // EFEK KHUSUS TUTORIAL (Berdiri sendiri, muncul pas user udah login)
 useEffect(() => {
