@@ -403,12 +403,15 @@ export default function App() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    const paksaMasuk = setTimeout(() => {
+      console.log("BOM WAKTU MELEDAK: Memaksa masuk ke aplikasi!");
       setLoadingAuth(false);
-      if (!currentUser) setLoadingPremium(false);
-    });
-    return () => unsubscribe();
+      setLoadingData(false);
+      setLoadingPremium(false); // 👈 INI BIANG KEROKNYA, TADI GUE LUPA MASUKIN! 😂
+      setIsPremium(true); 
+    }, 3000); 
+
+    return () => clearTimeout(paksaMasuk);
   }, []);
 // EFEK KHUSUS TUTORIAL (Berdiri sendiri, muncul pas user udah login)
 useEffect(() => {
